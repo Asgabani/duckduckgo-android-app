@@ -21,12 +21,8 @@ import androidx.annotation.VisibleForTesting
 import androidx.core.net.toUri
 import com.duckduckgo.app.autocomplete.AutocompleteTabsFeature
 import com.duckduckgo.app.autocomplete.impl.AutoCompletePixelNames
-import com.duckduckgo.app.autocomplete.impl.AutoCompleteRepository
-import com.duckduckgo.app.autocomplete.impl.AutocompletePixelParams
 import com.duckduckgo.app.browser.UriString
 import com.duckduckgo.app.di.AppCoroutineScope
-import com.duckduckgo.app.onboarding.store.AppStage
-import com.duckduckgo.app.onboarding.store.UserStageStore
 import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.app.statistics.pixels.Pixel.PixelParameter
 import com.duckduckgo.app.systemsearch.DeviceApp
@@ -41,12 +37,13 @@ import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggesti
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteHistoryRelatedSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteHistoryRelatedSuggestion.AutoCompleteHistorySearchSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteHistoryRelatedSuggestion.AutoCompleteHistorySuggestion
-import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteHistoryRelatedSuggestion.AutoCompleteInAppMessageSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteSearchSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteUrlSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteUrlSuggestion.AutoCompleteBookmarkSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteUrlSuggestion.AutoCompleteSwitchToTabSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoCompleteFactory
+import com.duckduckgo.browsermode.api.BrowserMode
+import com.duckduckgo.browsermode.api.BrowserModeDataProvider
 import com.duckduckgo.common.utils.AppUrl
 import com.duckduckgo.common.utils.AppUrl.Url
 import com.duckduckgo.common.utils.DispatcherProvider
@@ -54,7 +51,7 @@ import com.duckduckgo.common.utils.UrlScheme
 import com.duckduckgo.common.utils.baseHost
 import com.duckduckgo.common.utils.extensions.combine
 import com.duckduckgo.common.utils.toStringDropScheme
-import com.duckduckgo.di.scopes.AppScope
+import com.duckduckgo.di.scopes.ActivityScope
 import com.duckduckgo.duckchat.api.DuckChat
 import com.duckduckgo.history.api.HistoryEntry
 import com.duckduckgo.history.api.HistoryEntry.VisitedPage
@@ -85,19 +82,19 @@ const val minimumNumberInSuggestionGroup = 5
  * Provides a default [AutoComplete] instance with default configuration.
  * For dynamic configs, use [AutoCompleteFactory] instead.
  */
-@ContributesBinding(AppScope::class)
+@ContributesBinding(ActivityScope::class)
 class DefaultAutoComplete @Inject constructor(
-    private val factory: AutoCompleteFactory,
-) : AutoComplete by factory.create(AutoComplete.Config())
+    factory: AutoCompleteFactory,
+    browserMode: BrowserMode,
+) : AutoComplete by factory.create(AutoComplete.Config(), browserMode)
 
 class AutoCompleteApi constructor(
     private val autoCompleteService: AutoCompleteService,
     private val savedSitesRepository: SavedSitesRepository,
     private val navigationHistory: NavigationHistory,
     private val autoCompleteScorer: AutoCompleteScorer,
-    private val autoCompleteRepository: AutoCompleteRepository,
-    private val tabRepository: TabRepository,
-    private val userStageStore: UserStageStore,
+    private val tabRepositoryProvider: BrowserModeDataProvider<TabRepository>,
+    private val browserMode: BrowserMode,
     private val autocompleteTabsFeature: AutocompleteTabsFeature,
     private val duckChat: DuckChat,
     private val history: NavigationHistory,
@@ -107,6 +104,9 @@ class AutoCompleteApi constructor(
     @AppCoroutineScope private val coroutineScope: CoroutineScope,
     private val config: AutoComplete.Config,
 ) : AutoComplete {
+
+    private val tabRepository: TabRepository
+        get() = tabRepositoryProvider.forMode(browserMode)
 
     private var isAutocompleteTabsFeatureEnabled: Boolean? = null
 
@@ -134,10 +134,9 @@ class AutoCompleteApi constructor(
             val bookmarksFavoritesTabsAndHistory = combineBookmarksFavoritesTabsAndHistory(bookmarks, favorites, tabs, historyResults)
             val topHits = getTopHits(bookmarksFavoritesTabsAndHistory, searchResults)
             val filteredBookmarksFavoritesTabsAndHistory = filterBookmarksAndTabsAndHistory(bookmarksFavoritesTabsAndHistory, topHits)
-            val middleSectionSearchResults = makeSearchResultsNotAllowedInTopHits(searchResults)
-            val distinctSearchResults = getDistinctSearchResults(middleSectionSearchResults, topHits, filteredBookmarksFavoritesTabsAndHistory)
+            val middleSectionSearchResults = getMiddleSearchResults(searchResults, topHits, filteredBookmarksFavoritesTabsAndHistory)
 
-            val searchSuggestions = (topHits + distinctSearchResults + filteredBookmarksFavoritesTabsAndHistory).distinctBy {
+            val searchSuggestions = (topHits + middleSectionSearchResults + filteredBookmarksFavoritesTabsAndHistory).distinctBy {
                 Pair(it.phrase, it::class.java)
             }
             if (searchSuggestions.isNotEmpty() && deviceAppResults.isNotEmpty()) {
@@ -146,11 +145,6 @@ class AutoCompleteApi constructor(
                 searchSuggestions + deviceAppResults
             }
         }.map { suggestions ->
-            val inAppMessage = mutableListOf<AutoCompleteSuggestion>()
-            if (shouldShowHistoryInAutoCompleteIAM(suggestions)) {
-                inAppMessage.add(0, AutoCompleteInAppMessageSuggestion)
-            }
-
             val duckAIPrompt = mutableListOf<AutoCompleteSuggestion>()
             if (duckChat.isEnabled()) {
                 duckAIPrompt.add(AutoCompleteSuggestion.AutoCompleteDuckAIPrompt(query))
@@ -158,7 +152,7 @@ class AutoCompleteApi constructor(
 
             AutoCompleteResult(
                 query = query,
-                suggestions = inAppMessage + suggestions.ifEmpty { listOf(AutoCompleteDefaultSuggestion(query)) } + duckAIPrompt,
+                suggestions = suggestions.ifEmpty { listOf(AutoCompleteDefaultSuggestion(query)) } + duckAIPrompt,
             )
         }
     }
@@ -202,6 +196,18 @@ class AutoCompleteApi constructor(
         return bookmarksAndFavoritesAndTabsAndHistory
             .filter { suggestion -> topHits.none { it.phrase == suggestion.phrase } }
             .take(maxBottomSection)
+    }
+
+    private fun getMiddleSearchResults(
+        searchResults: List<AutoCompleteSearchSuggestion>,
+        topHits: List<AutoCompleteSuggestion>,
+        filteredBookmarksAndTabsAndHistory: List<AutoCompleteSuggestion>,
+    ): List<AutoCompleteSearchSuggestion> {
+        val middleSectionSearchResults = makeSearchResultsNotAllowedInTopHits(searchResults)
+        val distinctSearchResults = getDistinctSearchResults(middleSectionSearchResults, topHits, filteredBookmarksAndTabsAndHistory)
+        return distinctSearchResults
+            .filter { suggestion -> topHits.none { it.phrase == suggestion.phrase && it::class.isInstance(suggestion) } }
+            .take(MAX_SEARCH_SUGGESTIONS)
     }
 
     private fun makeSearchResultsNotAllowedInTopHits(searchResults: List<AutoCompleteSearchSuggestion>): List<AutoCompleteSearchSuggestion> {
@@ -248,33 +254,11 @@ class AutoCompleteApi constructor(
         return uniqueHistorySuggestions + updatedBookmarkSuggestions
     }
 
-    override suspend fun userDismissedHistoryInAutoCompleteIAM() {
-        autoCompleteRepository.dismissHistoryInAutoCompleteIAM()
-    }
-
-    private suspend fun shouldShowHistoryInAutoCompleteIAM(suggestions: List<AutoCompleteSuggestion>): Boolean {
-        return isExistingUser() && !autoCompleteRepository.wasHistoryInAutoCompleteIAMDismissed() &&
-            autoCompleteRepository.countHistoryInAutoCompleteIAMShown() < 3 &&
-            suggestions.any { it is AutoCompleteHistorySuggestion || it is AutoCompleteHistorySearchSuggestion }
-    }
-
-    private suspend fun isExistingUser(): Boolean {
-        if (userStageStore.getUserAppStage() == AppStage.NEW || userStageStore.getUserAppStage() == AppStage.DAX_ONBOARDING) {
-            // do not show anymore
-            autoCompleteRepository.dismissHistoryInAutoCompleteIAM()
-            return false
-        }
-        return true
-    }
-
-    override suspend fun submitUserSeenHistoryIAM() {
-        autoCompleteRepository.submitUserSeenHistoryIAM()
-    }
-
     override suspend fun fireAutocompletePixel(
         suggestions: List<AutoCompleteSuggestion>,
         suggestion: AutoCompleteSuggestion,
         experimentalInputScreen: Boolean,
+        duckAiSurface: Boolean,
     ) {
         val hasBookmarks = withContext(dispatchers.io()) {
             savedSitesRepository.hasBookmarks()
@@ -293,7 +277,7 @@ class AutoCompleteApi constructor(
         val hasFavoriteResults = suggestions.any { it is AutoCompleteBookmarkSuggestion && it.isFavorite }
         val hasHistoryResults = suggestions.any { it is AutoCompleteHistorySuggestion || it is AutoCompleteHistorySearchSuggestion }
         val hasSwitchToTabResults = suggestions.any { it is AutoCompleteSwitchToTabSuggestion }
-        val params = mutableMapOf(
+        val params = mapOf(
             PixelParameter.SHOWED_BOOKMARKS to hasBookmarkResults.toString(),
             PixelParameter.SHOWED_FAVORITES to hasFavoriteResults.toString(),
             PixelParameter.BOOKMARK_CAPABLE to hasBookmarks.toString(),
@@ -304,12 +288,10 @@ class AutoCompleteApi constructor(
             PixelParameter.SHOWED_SWITCH_TO_TAB to hasSwitchToTabResults.toString(),
         )
         val pixelName = when (suggestion) {
-            is AutoCompleteBookmarkSuggestion -> {
-                if (suggestion.isFavorite) {
-                    AutoCompletePixelNames.AUTOCOMPLETE_FAVORITE_SELECTION
-                } else {
-                    AutoCompletePixelNames.AUTOCOMPLETE_BOOKMARK_SELECTION
-                }
+            is AutoCompleteBookmarkSuggestion -> if (suggestion.isFavorite) {
+                AutoCompletePixelNames.AUTOCOMPLETE_FAVORITE_SELECTION
+            } else {
+                AutoCompletePixelNames.AUTOCOMPLETE_BOOKMARK_SELECTION
             }
 
             is AutoCompleteSearchSuggestion -> if (suggestion.isUrl) {
@@ -334,12 +316,19 @@ class AutoCompleteApi constructor(
             else -> return
         }
 
-        if (suggestion is AutoCompleteSearchSuggestion) {
-            val clickedSearchSuggestionIndex = suggestions.filter { it is AutoCompleteSearchSuggestion }.indexOf(suggestion)
-            params[AutocompletePixelParams.PARAM_SEARCH_SUGGESTION_INDEX] = clickedSearchSuggestionIndex.toString()
-        }
+        // On the Duck.ai tab the same suggestion taps are attributed to a separate
+        // m_autocomplete_duckai_click_* family so they aren't conflated with search-mode taps.
+        pixel.fire(if (duckAiSurface) pixelName.toDuckAiSurface() else pixelName, params)
+    }
 
-        pixel.fire(pixelName, params)
+    private fun AutoCompletePixelNames.toDuckAiSurface(): AutoCompletePixelNames = when (this) {
+        AutoCompletePixelNames.AUTOCOMPLETE_FAVORITE_SELECTION -> AutoCompletePixelNames.AUTOCOMPLETE_DUCKAI_FAVORITE_SELECTION
+        AutoCompletePixelNames.AUTOCOMPLETE_BOOKMARK_SELECTION -> AutoCompletePixelNames.AUTOCOMPLETE_DUCKAI_BOOKMARK_SELECTION
+        AutoCompletePixelNames.AUTOCOMPLETE_SEARCH_WEBSITE_SELECTION -> AutoCompletePixelNames.AUTOCOMPLETE_DUCKAI_WEBSITE_SELECTION
+        AutoCompletePixelNames.AUTOCOMPLETE_HISTORY_SITE_SELECTION -> AutoCompletePixelNames.AUTOCOMPLETE_DUCKAI_HISTORY_SITE_SELECTION
+        AutoCompletePixelNames.AUTOCOMPLETE_HISTORY_SEARCH_SELECTION -> AutoCompletePixelNames.AUTOCOMPLETE_DUCKAI_HISTORY_SEARCH_SELECTION
+        AutoCompletePixelNames.AUTOCOMPLETE_SWITCH_TO_TAB_SELECTION -> AutoCompletePixelNames.AUTOCOMPLETE_DUCKAI_SWITCH_TO_TAB_SELECTION
+        else -> this
     }
 
     private fun isAllowedInTopHits(entry: HistoryEntry): Boolean {
@@ -349,10 +338,8 @@ class AutoCompleteApi constructor(
     private fun getAutocompleteSwitchToTabResults(query: String): Flow<List<RankedSuggestion<AutoCompleteSwitchToTabSuggestion>>> =
         runCatching {
             if (autocompleteTabsEnabled) {
-                combine(
-                    tabRepository.flowTabs,
-                    tabRepository.flowSelectedTab,
-                ) { tabs, selectedTab ->
+                val repo = tabRepositoryProvider.forMode(browserMode)
+                combine(repo.flowTabs, repo.flowSelectedTab) { tabs, selectedTab ->
                     rankTabs(query, tabs.filter { it.tabId != selectedTab?.tabId })
                 }.distinctUntilChanged()
             } else {
@@ -588,6 +575,7 @@ class AutoCompleteApi constructor(
 
     private companion object {
         private const val MAX_RESULTS_PER_GROUP_WITH_INSTALLED_APPS = 4
+        private const val MAX_SEARCH_SUGGESTIONS = 5
     }
 }
 

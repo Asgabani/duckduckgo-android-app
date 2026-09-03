@@ -25,9 +25,9 @@ import com.duckduckgo.app.di.AppCoroutineScope
 import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.app.statistics.pixels.Pixel.PixelType.Unique
 import com.duckduckgo.browser.api.install.AppInstall
-import com.duckduckgo.browser.api.referrer.AppReferrer
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.AppScope
+import com.duckduckgo.referral.api.AppReferrer
 import com.squareup.anvil.annotations.ContributesBinding
 import dagger.SingleInstanceIn
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +47,7 @@ class RealAttributedMetricClient @Inject constructor(
     private val appReferrer: AppReferrer,
     private val dateUtils: AttributedMetricsDateUtils,
     private val appInstall: AppInstall,
+    private val originParamManager: OriginParamManager,
 ) : AttributedMetricClient {
 
     override fun collectEvent(eventName: String) {
@@ -99,7 +100,7 @@ class RealAttributedMetricClient @Inject constructor(
 
             val origin = appReferrer.getOriginAttributeCampaign()
             val paramsMutableMap = params.toMutableMap()
-            if (!origin.isNullOrBlank()) {
+            if (!origin.isNullOrBlank() && originParamManager.shouldSendOrigin(origin)) {
                 paramsMutableMap["origin"] = origin
             } else {
                 paramsMutableMap["install_date"] = getInstallDate()

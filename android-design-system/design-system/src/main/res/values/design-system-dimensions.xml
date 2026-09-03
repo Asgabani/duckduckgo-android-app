@@ -33,9 +33,10 @@
     <dimen name="mediumShapeCornerRadius">12dp</dimen>
     <dimen name="largeShapeCornerRadius">16dp</dimen>
     <dimen name="extraLargeShapeCornerRadius">24dp</dimen>
+    <dimen name="pillShapeCornerRadius">1000dp</dimen>
 
     <!-- App Components -->
-    <dimen name="changeAppIconSize">75dp</dimen>
+    <dimen name="changeAppIconSize">64dp</dimen>
     <dimen name="homeTabDdgLogoTopMargin">100dp</dimen>
     <dimen name="ntpDaxLogoIconWidth">140dp</dimen>
 
@@ -43,11 +44,11 @@
     <dimen name="toolbarIconSize">24dp</dimen>
     <dimen name="toolbarIconPadding">3dp</dimen>
     <dimen name="toolbarIcon">40dp</dimen>
-    <dimen name="toolbarSize">60dp</dimen>
+    <dimen name="toolbarSize">64dp</dimen>
 
     <!-- Navigation Bar -->
-    <dimen name="navigationBarPaddingTop">12dp</dimen>
-    <dimen name="navigationBarPaddingBottom">8dp</dimen>
+    <dimen name="navigationBarPaddingTop">8dp</dimen>
+    <dimen name="navigationBarPaddingBottom">4dp</dimen>
     <dimen name="navigationBarPaddingHorizontal">18dp</dimen>
     <dimen name="bottomNavIcon">24dp</dimen>
 
@@ -56,10 +57,12 @@
     <dimen name="omnibarCardMarginHorizontal">16dp</dimen>
     <dimen name="omnibarCardMarginEnd">8dp</dimen>
     <dimen name="omnibarCardExtendedMarginEnd">4dp</dimen>
-    <dimen name="omnibarCardMarginTop">4dp</dimen>
+    <dimen name="omnibarCardMarginTop">8dp</dimen>
     <dimen name="omnibarCardMarginBottom">12dp</dimen>
     <dimen name="omnibarOutlineWidth">0dp</dimen>
     <dimen name="omnibarOutlineFocusedWidth">2dp</dimen>
+    <!-- 1dp above the legacy AppBarLayout's lifted elevation (4dp) so floated overlays clear it. -->
+    <dimen name="omnibarFloatElevation">5dp</dimen>
     <dimen name="cookiesAnimationHeight">34dp</dimen>
     <dimen name="cookiesAnimationRadius">14dp</dimen>
 
@@ -107,6 +110,9 @@
     <dimen name="popupMenuItemWidth">198dp</dimen>
     <dimen name="popupMenuNavigationItemSize">40dp</dimen>
 
+    <!-- Menu Action Button -->
+    <dimen name="menuActionHeight">82dp</dimen>
+
     <!-- Dialogs -->
     <dimen name="dialogButtonHeight">40dp</dimen>
     <dimen name="dialogImageSize">40dp</dimen>
@@ -115,6 +121,10 @@
     <dimen name="dialogContentPaddingBottom">18dp</dimen>
     <dimen name="dialogContentPaddingStart">@dimen/keyline_5</dimen>
     <dimen name="dialogContentPaddingEnd">@dimen/keyline_5</dimen>
+    <dimen name="rebrandDialogMaxWidth">300dp</dimen>
+    <dimen name="rebrandDialogBorderRadius">28dp</dimen>
+    <dimen name="rebrandDialogButtonSidePadding">0dp</dimen>
+    <dimen name="rebrandDialogIconInset">@dimen/keyline_2</dimen>
 
     <!-- Dax Dialog -->
     <dimen name="daxDialogContentPaddingTop">20dp</dimen>
@@ -127,6 +137,7 @@
     <!-- Bottom Sheet -->
     <dimen name="actionBottomSheetVerticalPadding">8dp</dimen>
     <dimen name="bottomSheetTitleVerticalPadding">14dp</dimen>
+    <dimen name="bottomSheetDragHeight">24dp</dimen>
     <dimen name="promoBottomSheetPadding">24dp</dimen>
     <dimen name="promoBottomSheetImageWidth">48dp</dimen>
 
@@ -138,11 +149,23 @@
     <dimen name="verticalDividerWidth">1dp</dimen>
     <dimen name="verticalDividerSidePadding">@dimen/keyline_4</dimen>
 
+    <!-- Dax Switch -->
+    <dimen name="daxSwitchThumbSize">32dp</dimen>
+
+    <!-- Dax Remote Message -->
+    <dimen name="remoteMessageCardImageSize">48dp</dimen>
+    <dimen name="promoMessageCardIllustrationMaxWidth">256dp</dimen>
+    <dimen name="promoMessageCardIllustrationMaxHeight">144dp</dimen>
+
     <!-- Slider -->
     <dimen name="sliderTrackHeight">6dp</dimen>
 
     <!-- InfoPanel -->
     <dimen name="infoPanelIconSize">16dp</dimen>
+
+    <!-- Yellow Pill -->
+    <dimen name="yellowPillHeight">15dp</dimen>
+    <dimen name="yellowPillPaddingHorizontal">4dp</dimen>
 
     <!-- Message CTA -->
     <dimen name="messageCtaCloseButtonSize">40dp</dimen>

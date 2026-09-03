@@ -56,4 +56,31 @@ interface AutoconsentFeature {
      */
     @Toggle.DefaultValue(DefaultFeatureValue.TRUE)
     fun cpmPixels(): Toggle
+
+    @Toggle.DefaultValue(DefaultFeatureValue.FALSE)
+    fun heuristicAction(): Toggle
+
+    /**
+     * Gate for the new Cookie Pop-up Preference settings UI and behavior.
+     */
+    @Toggle.DefaultValue(DefaultFeatureValue.FALSE)
+    fun cookiePopUpPreferenceSetting(): Toggle
+
+    /**
+     * Gate for the Cookie Pop-up Protection opt-in prompt shown through the prompts coordinator.
+     */
+    @Toggle.DefaultValue(DefaultFeatureValue.INTERNAL)
+    fun cookiePopUpOptInPrompt(): Toggle
+
+    /**
+     * Allows the Cookie Pop-up Protection opt-in prompt to be dismissed with the back button.
+     */
+    @Toggle.DefaultValue(DefaultFeatureValue.FALSE)
+    fun cookiePopUpOptInPromptDismissible(): Toggle
+
+    /**
+     * Shows a close button on the Cookie Pop-up Protection opt-in prompt.
+     */
+    @Toggle.DefaultValue(DefaultFeatureValue.FALSE)
+    fun cookiePopUpOptInPromptCloseButton(): Toggle
 }

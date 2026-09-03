@@ -547,7 +547,10 @@ class SecureStoreBackedAutofillStoreTest {
         )
         testee.saveCredentials(url, credentials)
 
-        assertEquals(credentials.copy(domain = "example.com", lastUpdatedMillis = UPDATED_INITIAL_LAST_UPDATED), testee.getCredentials(url)[0])
+        assertEquals(
+            credentials.copy(domain = "example.com", lastUpdatedMillis = UPDATED_INITIAL_LAST_UPDATED, lastUsedMillis = UPDATED_INITIAL_LAST_UPDATED),
+            testee.getCredentials(url)[0],
+        )
     }
 
     @Test
@@ -700,6 +703,16 @@ class SecureStoreBackedAutofillStoreTest {
         val saved = storeCredentials(id = 1, domain = "example.com", username = "username", password = "password")
         val updated = testee.updateCredentials(saved, refreshLastUpdatedTimestamp = false)!!
         assertEquals(DEFAULT_INITIAL_LAST_UPDATED, updated.lastUpdatedMillis)
+    }
+
+    @Test
+    fun whenGetCredentialCountFailsThenResultFailureEmitted() = runTest {
+        setupTesteeWithAutofillAvailable()
+        secureStore.exceptionToThrow = RuntimeException("Storage error")
+
+        val result = testee.getCredentialCount().first()
+
+        assertTrue(result.isFailure)
     }
 
     @Test

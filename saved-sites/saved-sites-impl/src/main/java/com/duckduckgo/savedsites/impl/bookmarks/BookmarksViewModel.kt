@@ -113,7 +113,6 @@ class BookmarksViewModel @Inject constructor(
         data object LaunchBookmarkExport : Command()
         data object LaunchAddFolder : Command()
         data object ShowFaviconsPrompt : Command()
-        data object LaunchSyncSettings : Command()
         data object ReevalutePromotions : Command()
         data class ShowBrowserMenu(
             val buttonsDisabled: Boolean,
@@ -139,9 +138,15 @@ class BookmarksViewModel @Inject constructor(
         viewModelScope.launch(dispatcherProvider.io()) {
             syncEngine.triggerSync(FEATURE_READ)
         }
+        pixel.fire(SavedSitesPixelName.MENU_ACTION_BOOKMARKS_PRESSED.pixelName)
         pixel.fire(
             SavedSitesPixelName.MENU_ACTION_BOOKMARKS_PRESSED_DAILY.pixelName,
             parameters = mapOf(SavedSitesPixelParameters.SORT_MODE to bookmarksDataStore.getSortingMode().name),
+            type = Daily(),
+        )
+        pixel.fire(SavedSitesPixelName.PRODUCT_TELEMETRY_SURFACE_BOOKMARKS_OPENED.pixelName)
+        pixel.fire(
+            SavedSitesPixelName.PRODUCT_TELEMETRY_SURFACE_BOOKMARKS_OPENED_DAILY.pixelName,
             type = Daily(),
         )
     }
@@ -349,7 +354,7 @@ class BookmarksViewModel @Inject constructor(
         viewModelScope.launch(dispatcherProvider.io()) {
             hiddenIds.emit(hiddenIds.value.copy(items = hiddenIds.value.items + bookmarkFolder.id))
         }
-        command.postValue(ConfirmDeleteBookmarkFolder(bookmarkFolder))
+        command.value = ConfirmDeleteBookmarkFolder(bookmarkFolder)
     }
 
     private suspend fun onSavedSitesItemsChanged(
@@ -478,12 +483,6 @@ class BookmarksViewModel @Inject constructor(
 
         withContext(dispatcherProvider.main()) {
             viewState.value = viewState.value?.copy(canShowPromo = canShowPromo)
-        }
-    }
-
-    fun userReturnedFromSyncSettings() {
-        viewModelScope.launch(dispatcherProvider.io()) {
-            showSyncPromotionIfEligible()
         }
     }
 

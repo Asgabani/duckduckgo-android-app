@@ -20,7 +20,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.webkit.WebViewFeature
 import com.duckduckgo.anvil.annotations.ContributesViewModel
-import com.duckduckgo.app.browser.omnibar.OmnibarFeatureRepository
+import com.duckduckgo.app.browser.animations.AddressBarTrackersAnimationManager
+import com.duckduckgo.app.browser.api.OmnibarRepository
+import com.duckduckgo.app.browser.omnibar.OmnibarType
+import com.duckduckgo.app.browser.urldisplay.UrlDisplayRepository
 import com.duckduckgo.app.icon.api.AppIcon
 import com.duckduckgo.app.pixels.AppPixelName
 import com.duckduckgo.app.pixels.AppPixelName.SETTINGS_THEME_TOGGLED_DARK
@@ -29,8 +32,8 @@ import com.duckduckgo.app.pixels.AppPixelName.SETTINGS_THEME_TOGGLED_SYSTEM_DEFA
 import com.duckduckgo.app.settings.db.SettingsDataStore
 import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.app.tabs.store.TabSwitcherDataStore
-import com.duckduckgo.browser.ui.omnibar.OmnibarType
 import com.duckduckgo.common.ui.DuckDuckGoTheme
+import com.duckduckgo.common.ui.store.AppBrandDesignUpdateToggles
 import com.duckduckgo.common.ui.store.ThemingDataStore
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.ActivityScope
@@ -53,10 +56,13 @@ import kotlin.to
 class AppearanceViewModel @Inject constructor(
     private val themingDataStore: ThemingDataStore,
     private val settingsDataStore: SettingsDataStore,
+    private val urlDisplayRepository: UrlDisplayRepository,
     private val pixel: Pixel,
     private val dispatcherProvider: DispatcherProvider,
     private val tabSwitcherDataStore: TabSwitcherDataStore,
-    omnibarFeatureRepository: OmnibarFeatureRepository,
+    private val addressBarTrackersAnimationManager: AddressBarTrackersAnimationManager,
+    private val appBrandDesignUpdateToggles: AppBrandDesignUpdateToggles,
+    omnibarRepository: OmnibarRepository,
 ) : ViewModel() {
     data class ViewState(
         val theme: DuckDuckGoTheme = DuckDuckGoTheme.LIGHT,
@@ -67,7 +73,10 @@ class AppearanceViewModel @Inject constructor(
         val omnibarType: OmnibarType = OmnibarType.SINGLE_TOP,
         val isFullUrlEnabled: Boolean = true,
         val isTrackersCountInTabSwitcherEnabled: Boolean = true,
+        val isAddressBarTrackersAnimationEnabled: Boolean = true,
+        val shouldShowAddressBarTrackersAnimationItem: Boolean = false,
         val shouldShowSplitOmnibarSettings: Boolean = false,
+        val showAppIconSettingFirst: Boolean = false,
     )
 
     sealed class Command {
@@ -91,25 +100,38 @@ class AppearanceViewModel @Inject constructor(
             forceDarkModeEnabled = settingsDataStore.experimentalWebsiteDarkMode,
             canForceDarkMode = canForceDarkMode(),
             supportsForceDarkMode = WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING),
-            isFullUrlEnabled = settingsDataStore.isFullUrlEnabled,
             omnibarType = settingsDataStore.omnibarType,
-            shouldShowSplitOmnibarSettings = omnibarFeatureRepository.isSplitOmnibarAvailable,
+            shouldShowSplitOmnibarSettings = omnibarRepository.isSplitOmnibarAvailable,
+            isAddressBarTrackersAnimationEnabled = settingsDataStore.showTrackersCountInAddressBar,
         ),
     )
 
     fun viewState() = combine(
         viewState,
+        urlDisplayRepository.isFullUrlEnabled,
         tabSwitcherDataStore.isTrackersAnimationInfoTileHidden(),
-    ) { currentViewState, isTrackersAnimationTileHidden ->
+    ) { currentViewState, isFullUrlEnabled, isTrackersAnimationTileHidden ->
+        val isAddressBarTrackersAnimationFeatureEnabled = addressBarTrackersAnimationManager.isFeatureEnabled()
         currentViewState.copy(
             isTrackersCountInTabSwitcherEnabled = !isTrackersAnimationTileHidden,
+            isFullUrlEnabled = isFullUrlEnabled,
+            shouldShowAddressBarTrackersAnimationItem = isAddressBarTrackersAnimationFeatureEnabled,
         )
     }.stateIn(viewModelScope, SharingStarted.Lazily, viewState.value)
 
     private val command = Channel<Command>(1, BufferOverflow.DROP_OLDEST)
     fun commands(): Flow<Command> = command.receiveAsFlow()
 
-    private fun canForceDarkMode(): Boolean = themingDataStore.theme != DuckDuckGoTheme.LIGHT
+    init {
+        viewModelScope.launch {
+            val showAppIconSettingFirst = withContext(dispatcherProvider.io()) {
+                appBrandDesignUpdateToggles.appIcon().isEnabled()
+            }
+            viewState.update { it.copy(showAppIconSettingFirst = showAppIconSettingFirst) }
+        }
+    }
+
+    private fun canForceDarkMode(theme: DuckDuckGoTheme = themingDataStore.theme): Boolean = theme != DuckDuckGoTheme.LIGHT
 
     fun userRequestedToChangeTheme() {
         viewModelScope.launch { command.send(Command.LaunchThemeSettings(viewState.value.theme)) }
@@ -135,7 +157,7 @@ class AppearanceViewModel @Inject constructor(
         viewModelScope.launch(dispatcherProvider.io()) {
             themingDataStore.theme = selectedTheme
             withContext(dispatcherProvider.main()) {
-                viewState.update { it.copy(theme = selectedTheme, forceDarkModeEnabled = canForceDarkMode()) }
+                viewState.update { it.copy(theme = selectedTheme, canForceDarkMode = canForceDarkMode(selectedTheme)) }
                 command.send(Command.UpdateTheme)
             }
         }
@@ -175,8 +197,7 @@ class AppearanceViewModel @Inject constructor(
 
     fun onFullUrlSettingChanged(checked: Boolean) {
         viewModelScope.launch(dispatcherProvider.io()) {
-            settingsDataStore.isFullUrlEnabled = checked
-            viewState.update { it.copy(isFullUrlEnabled = checked) }
+            urlDisplayRepository.setFullUrlEnabled(checked)
 
             val params = mapOf(Pixel.PixelParameter.IS_ENABLED to checked.toString())
             pixel.fire(AppPixelName.SETTINGS_APPEARANCE_IS_FULL_URL_OPTION_TOGGLED, params)
@@ -190,6 +211,16 @@ class AppearanceViewModel @Inject constructor(
 
             val params = mapOf(Pixel.PixelParameter.IS_ENABLED to checked.toString())
             pixel.fire(AppPixelName.SETTINGS_APPEARANCE_IS_TRACKER_COUNT_IN_TAB_SWITCHER_TOGGLED, params)
+        }
+    }
+
+    fun onShowTrackersCountInAddressBarChanged(checked: Boolean) {
+        viewModelScope.launch(dispatcherProvider.io()) {
+            settingsDataStore.showTrackersCountInAddressBar = checked
+            viewState.update { it.copy(isAddressBarTrackersAnimationEnabled = checked) }
+
+            val params = mapOf(Pixel.PixelParameter.IS_ENABLED to checked.toString())
+            pixel.fire(AppPixelName.SETTINGS_APPEARANCE_IS_TRACKER_COUNT_IN_ADDRESS_BAR_TOGGLED, params)
         }
     }
 }

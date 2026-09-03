@@ -49,13 +49,10 @@ class RealEventRepositoryTest {
                 ).build()
         eventDao = db.eventDao()
         testDateProvider = FakeAttributedMetricsDateUtils(LocalDate.of(2025, 10, 3))
-        repository =
-            RealEventRepository(
-                eventDao = eventDao,
-                attributedMetricsDateUtils = testDateProvider,
-                appCoroutineScope = coroutineTestRule.testScope,
-                dispatcherProvider = coroutineTestRule.testDispatcherProvider,
-            )
+        repository = RealEventRepository(
+            eventDao = eventDao,
+            attributedMetricsDateUtils = testDateProvider,
+        )
     }
 
     @After
@@ -144,16 +141,15 @@ class RealEventRepositoryTest {
         }
 
     @Test
-    fun whenDeleteAllEventsThenRemoveAllEvents() =
-        runTest {
-            // Setup data
-            eventDao.insertEvent(EventEntity("test_event", count = 1, day = "2025-10-03"))
-            eventDao.insertEvent(EventEntity("test_event", count = 1, day = "2025-10-02"))
-            eventDao.insertEvent(EventEntity("test_event", count = 1, day = "2025-09-03"))
+    fun whenDeleteAllEventsThenRemoveAllEvents() = runTest {
+        // Setup data
+        eventDao.insertEvent(EventEntity("test_event", count = 1, day = "2025-10-03"))
+        eventDao.insertEvent(EventEntity("test_event", count = 1, day = "2025-10-02"))
+        eventDao.insertEvent(EventEntity("test_event", count = 1, day = "2025-09-03"))
 
-            repository.deleteAllEvents()
+        repository.deleteAllEvents()
 
-            val remainingEvents = eventDao.getEventsByNameAndTimeframe("test_event", "2025-09-03", "2025-10-03")
-            assert(remainingEvents.isEmpty())
-        }
+        val remainingEvents = eventDao.getEventsByNameAndTimeframe("test_event", "2025-09-03", "2025-10-03")
+        assert(remainingEvents.isEmpty())
+    }
 }

@@ -1,4 +1,5 @@
 appId: com.duckduckgo.mobile.android
+androidWebViewHierarchy: devtools
 name: "Autofill: Will backfill username in a multi-step login form"
 tags:
     - autofillBackfillingUsername
@@ -16,7 +17,7 @@ tags:
 
       # get to autofill form
       - tapOn:
-          id: "omnibarTextInput"
+          id: "omnibarTextInput|inputField"
       - inputText: "https://autofill.me/form/login-simple"
       - pressKey: Enter
 

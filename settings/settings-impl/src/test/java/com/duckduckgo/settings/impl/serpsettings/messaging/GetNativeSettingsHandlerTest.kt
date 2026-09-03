@@ -22,7 +22,7 @@ import com.duckduckgo.common.test.CoroutineTestRule
 import com.duckduckgo.feature.toggles.api.FakeFeatureToggleFactory
 import com.duckduckgo.feature.toggles.api.Toggle
 import com.duckduckgo.js.messaging.api.JsMessage
-import com.duckduckgo.settings.api.SettingsPageFeature
+import com.duckduckgo.settings.api.SerpSettingsFeature
 import com.duckduckgo.settings.impl.serpsettings.fakes.FakeJsMessaging
 import com.duckduckgo.settings.impl.serpsettings.fakes.FakeSerpSettingsDataStore
 import kotlinx.coroutines.test.runTest
@@ -40,8 +40,8 @@ class GetNativeSettingsHandlerTest {
     @get:Rule
     val coroutineTestRule: CoroutineTestRule = CoroutineTestRule()
 
-    private val fakeSettingsPageFeature: SettingsPageFeature =
-        FakeFeatureToggleFactory.create(SettingsPageFeature::class.java)
+    private val fakeSerpSettingsFeature: SerpSettingsFeature =
+        FakeFeatureToggleFactory.create(SerpSettingsFeature::class.java)
     private lateinit var fakeDataStore: FakeSerpSettingsDataStore
     private lateinit var fakeJsMessaging: FakeJsMessaging
     private lateinit var handler: GetNativeSettingsHandler
@@ -54,7 +54,7 @@ class GetNativeSettingsHandlerTest {
         handler = GetNativeSettingsHandler(
             dispatcherProvider = coroutineTestRule.testDispatcherProvider,
             appScope = coroutineTestRule.testScope,
-            settingsPageFeature = fakeSettingsPageFeature,
+            serpSettingsFeature = fakeSerpSettingsFeature,
             serpSettingsDataStore = fakeDataStore,
         )
     }
@@ -80,7 +80,7 @@ class GetNativeSettingsHandlerTest {
 
     @Test
     fun `when feature flag is disabled then no response is sent`() = runTest {
-        fakeSettingsPageFeature.serpSettingsSync().setRawStoredState(Toggle.State(enable = false))
+        fakeSerpSettingsFeature.storeSerpSettings().setRawStoredState(Toggle.State(enable = false))
         val jsMessage = createJsMessage()
 
         handler.getJsMessageHandler().process(
@@ -94,8 +94,8 @@ class GetNativeSettingsHandlerTest {
     }
 
     @Test
-    fun `when settings are null then returns empty JSONObject`() = runTest {
-        fakeSettingsPageFeature.serpSettingsSync().setRawStoredState(Toggle.State(enable = true))
+    fun `when settings are null then returns noNativeSettings true`() = runTest {
+        fakeSerpSettingsFeature.storeSerpSettings().setRawStoredState(Toggle.State(enable = true))
         fakeDataStore.reset()
         val jsMessage = createJsMessage()
 
@@ -110,13 +110,14 @@ class GetNativeSettingsHandlerTest {
         assertEquals(jsMessage.featureName, response.featureName)
         assertEquals(jsMessage.method, response.method)
         assertEquals(jsMessage.id, response.id)
-        assertEquals(0, response.params.length())
+        assertEquals(1, response.params.length())
+        assertEquals(true, response.params.getBoolean("noNativeSettings"))
     }
 
     @Test
-    fun `when settings are empty string then returns empty JSONObject`() = runTest {
-        fakeSettingsPageFeature.serpSettingsSync().setRawStoredState(Toggle.State(enable = true))
-        fakeDataStore.setSerpSettings("")
+    fun `when settings are empty JSON object then returns empty JSONObject`() = runTest {
+        fakeSerpSettingsFeature.storeSerpSettings().setRawStoredState(Toggle.State(enable = true))
+        fakeDataStore.setSerpSettings("{}")
         val jsMessage = createJsMessage()
 
         handler.getJsMessageHandler().process(
@@ -135,7 +136,7 @@ class GetNativeSettingsHandlerTest {
 
     @Test
     fun `when settings contain valid JSON then parses and returns JSONObject`() = runTest {
-        fakeSettingsPageFeature.serpSettingsSync().setRawStoredState(Toggle.State(enable = true))
+        fakeSerpSettingsFeature.storeSerpSettings().setRawStoredState(Toggle.State(enable = true))
         val settingsJson = """{"isDuckAiEnabled":"true","duckAiTitle":"Duck.AI"}"""
         fakeDataStore.setSerpSettings(settingsJson)
         val jsMessage = createJsMessage()
@@ -155,7 +156,7 @@ class GetNativeSettingsHandlerTest {
 
     @Test
     fun `when id is null then no response is sent`() = runTest {
-        fakeSettingsPageFeature.serpSettingsSync().setRawStoredState(Toggle.State(enable = true))
+        fakeSerpSettingsFeature.storeSerpSettings().setRawStoredState(Toggle.State(enable = true))
         fakeDataStore.setSerpSettings("""{"isDuckAiEnabled":"true"}""")
 
         val jsMessage = JsMessage(
@@ -174,7 +175,7 @@ class GetNativeSettingsHandlerTest {
 
     @Test
     fun `when id is not null then response is sent`() = runTest {
-        fakeSettingsPageFeature.serpSettingsSync().setRawStoredState(Toggle.State(enable = true))
+        fakeSerpSettingsFeature.storeSerpSettings().setRawStoredState(Toggle.State(enable = true))
         fakeDataStore.setSerpSettings("""{"isDuckAiEnabled":"true"}""")
 
         val jsMessage = JsMessage(
@@ -191,6 +192,31 @@ class GetNativeSettingsHandlerTest {
         assertEquals(1, fakeJsMessaging.getResponseCount())
         val response = fakeJsMessaging.getLastResponse()!!
         assertEquals("test-id", response.id)
+    }
+
+    @Test
+    fun `returns noNativeSettings true until settings are stored`() = runTest {
+        fakeSerpSettingsFeature.storeSerpSettings().setRawStoredState(Toggle.State(enable = true))
+        fakeDataStore.reset()
+        val jsMessage = createJsMessage()
+
+        // First call - no settings stored yet
+        handler.getJsMessageHandler().process(jsMessage, fakeJsMessaging, null)
+        coroutineTestRule.testScope.testScheduler.advanceUntilIdle()
+
+        val firstResponse = fakeJsMessaging.getLastResponse()!!
+        assertEquals(true, firstResponse.params.getBoolean("noNativeSettings"))
+
+        // Settings are now stored
+        fakeDataStore.setSerpSettings("""{"isDuckAiEnabled":"true"}""")
+
+        // Second call - settings exist
+        handler.getJsMessageHandler().process(jsMessage, fakeJsMessaging, null)
+        coroutineTestRule.testScope.testScheduler.advanceUntilIdle()
+
+        val secondResponse = fakeJsMessaging.getLastResponse()!!
+        assertEquals(false, secondResponse.params.optBoolean("noNativeSettings", false))
+        assertEquals("true", secondResponse.params.getString("isDuckAiEnabled"))
     }
 
     private fun createJsMessage(): JsMessage {

@@ -16,11 +16,14 @@
 
 package com.duckduckgo.app.browser.navigation.bar
 
+import androidx.annotation.DrawableRes
 import com.duckduckgo.app.browser.BrowserTabFragment
 import com.duckduckgo.app.browser.databinding.FragmentBrowserTabBinding
 import com.duckduckgo.app.browser.navigation.bar.view.BrowserNavigationBarObserver
 import com.duckduckgo.app.browser.navigation.bar.view.BrowserNavigationBarView
 import com.duckduckgo.app.browser.navigation.bar.view.BrowserNavigationBarView.ViewMode.Browser
+import com.duckduckgo.app.browser.navigation.bar.view.BrowserNavigationBarView.ViewMode.CustomTab
+import com.duckduckgo.app.browser.navigation.bar.view.BrowserNavigationBarView.ViewMode.DuckAI
 import com.duckduckgo.app.browser.navigation.bar.view.BrowserNavigationBarView.ViewMode.NewTab
 import com.duckduckgo.app.browser.omnibar.Omnibar
 import com.duckduckgo.common.ui.view.gone
@@ -61,11 +64,15 @@ class BrowserNavigationBarViewIntegration(
     }
 
     fun configureCustomTab() {
-        navigationBarView.setCustomTab(isCustomTab = true)
+        navigationBarView.setViewMode(CustomTab)
     }
 
     fun configureBrowserViewMode() {
         navigationBarView.setViewMode(Browser)
+    }
+
+    fun configureDuckAIViewMode() {
+        navigationBarView.setViewMode(DuckAI)
     }
 
     fun configureNewTabViewMode() {
@@ -74,6 +81,14 @@ class BrowserNavigationBarViewIntegration(
 
     fun configureFireButtonHighlight(highlighted: Boolean) {
         navigationBarView.setFireButtonHighlight(highlighted)
+    }
+
+    fun configureLockForOnboarding(locked: Boolean) {
+        navigationBarView.setLocked(locked)
+    }
+
+    fun configureBrowserMenuIcon(@DrawableRes icon: Int) {
+        navigationBarView.setBrowserMenuIcon(icon)
     }
 
     fun onDestroyView() {

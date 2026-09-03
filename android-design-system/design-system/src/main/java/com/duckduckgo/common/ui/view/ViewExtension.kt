@@ -18,14 +18,15 @@ package com.duckduckgo.common.ui.view
 
 import android.content.Context
 import android.content.res.Resources
+import android.graphics.Bitmap
 import android.graphics.Outline
+import android.util.Base64
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.inputmethod.InputMethodManager
 import android.widget.CompoundButton
 import androidx.annotation.ColorInt
-import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.core.view.children
@@ -33,6 +34,7 @@ import com.google.android.material.card.MaterialCardView
 import com.google.android.material.slider.Slider
 import com.google.android.material.snackbar.BaseTransientBottomBar.Duration
 import com.google.android.material.snackbar.Snackbar
+import java.io.ByteArrayOutputStream
 
 /*
  * Common view operations, simplified as Kotlin extensions
@@ -131,7 +133,7 @@ fun Float.toPx(context: Context): Float = (this * context.resources.displayMetri
 fun View.setAndPropagateUpFitsSystemWindows(enabled: Boolean = false) {
     fitsSystemWindows = enabled
     var view = this
-    while (view.parent != null) {
+    while (view.parent is View) {
         val parent = view.parent as View
         parent.fitsSystemWindows = enabled
         view = parent
@@ -262,7 +264,6 @@ private inline fun <reified T : ViewGroup.LayoutParams> updateLayoutParam(
  * @param insetDp Optional horizontal inset in dp to prevent shadow from being cut off
  * @param shadowColor Optional shadow color (Android P and above only)
  */
-@RequiresApi(28)
 fun View.addBottomShadow(
     shadowSizeDp: Float = 12f,
     offsetYDp: Float = 3f,
@@ -301,4 +302,11 @@ fun View.addBottomShadow(
     clipToOutline = false
     elevation = shadowSize
     setAllParentsClip(false)
+}
+
+fun Bitmap.encodeBitmapToBase64(): String {
+    val outputStream = ByteArrayOutputStream()
+    this.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+    val encoded = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+    return "data:image/png;base64,$encoded"
 }

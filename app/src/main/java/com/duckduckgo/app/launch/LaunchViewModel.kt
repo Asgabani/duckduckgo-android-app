@@ -16,24 +16,28 @@
 
 package com.duckduckgo.app.launch
 
+import android.content.Intent
+import android.os.Bundle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.duckduckgo.anvil.annotations.ContributesViewModel
-import com.duckduckgo.app.global.install.AppInstallStore
-import com.duckduckgo.app.notificationpromptexperiment.NotificationPromptExperimentManager
+import com.duckduckgo.app.onboarding.orchestrator.NewUserOnboardingPlanBootstrapper
 import com.duckduckgo.app.onboarding.store.UserStageStore
 import com.duckduckgo.app.onboarding.store.isNewUser
-import com.duckduckgo.app.onboardingdesignexperiment.OnboardingDesignExperimentManager
-import com.duckduckgo.app.referral.AppInstallationReferrerStateListener
-import com.duckduckgo.app.referral.AppInstallationReferrerStateListener.Companion.MAX_REFERRER_WAIT_TIME_MS
+import com.duckduckgo.app.onboardingbranddesignupdate.OnboardingBrandDesignUpdateToggles
+import com.duckduckgo.app.pixels.AppPixelName
+import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.common.utils.SingleLiveEvent
-import com.duckduckgo.daxprompts.api.DaxPrompts
-import com.duckduckgo.daxprompts.api.DaxPrompts.ActionType.NONE
-import com.duckduckgo.daxprompts.api.DaxPrompts.ActionType.SHOW_BROWSER_COMPARISON_PROMPT
-import com.duckduckgo.daxprompts.api.DaxPrompts.ActionType.TOO_SOON_TO_SHOW_OTHER_PROMPTS
 import com.duckduckgo.di.scopes.ActivityScope
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import com.duckduckgo.onboarding.api.LinearOnboardingHost
+import com.duckduckgo.referral.api.AppInstallationReferrerStateListener
+import com.duckduckgo.referral.api.AppInstallationReferrerStateListener.Companion.MAX_REFERRER_WAIT_TIME_MS
+import com.duckduckgo.testseeder.api.TestScenarioSeeder
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import logcat.LogPriority
 import logcat.logcat
 import javax.inject.Inject
 
@@ -41,70 +45,63 @@ import javax.inject.Inject
 class LaunchViewModel @Inject constructor(
     private val userStageStore: UserStageStore,
     private val appReferrerStateListener: AppInstallationReferrerStateListener,
-    private val daxPrompts: DaxPrompts,
-    private val appInstallStore: AppInstallStore,
-    private val onboardingDesignExperimentManager: OnboardingDesignExperimentManager,
-    private val notificationPromptExperimentManager: NotificationPromptExperimentManager,
-) :
-    ViewModel() {
+    private val pixel: Pixel,
+    private val testScenarioSeeder: TestScenarioSeeder,
+    private val newUserOnboardingPlanBootstrapper: NewUserOnboardingPlanBootstrapper,
+    private val brandDesignUpdateToggles: OnboardingBrandDesignUpdateToggles,
+) : ViewModel() {
 
     val command: SingleLiveEvent<Command> = SingleLiveEvent()
 
     sealed class Command {
         data object Onboarding : Command()
         data class Home(val replaceExistingSearch: Boolean = false) : Command()
-        data object DaxPromptBrowserComparison : Command()
-        data object CloseDaxPrompt : Command()
     }
 
-    suspend fun determineViewToShow() {
-        val waitForLocalPrivacyOnboardingExperiment = onboardingDesignExperimentManager.isWaitForLocalPrivacyConfigEnabled()
-        val waitForLocalPrivacyNotificationExperiment = notificationPromptExperimentManager.isWaitForLocalPrivacyConfigEnabled()
-        if (waitForLocalPrivacyOnboardingExperiment || waitForLocalPrivacyNotificationExperiment) {
-            withTimeoutOrNull(MAX_REFERRER_WAIT_TIME_MS) {
-                val referrerJob = async {
-                    waitForReferrerData()
-                }
-                val configJob = async {
-                    if (waitForLocalPrivacyOnboardingExperiment) {
-                        onboardingDesignExperimentManager.waitForPrivacyConfig()
-                    }
-                    if (waitForLocalPrivacyNotificationExperiment) {
-                        notificationPromptExperimentManager.waitForPrivacyConfig()
-                    }
-                }
-                awaitAll(referrerJob, configJob)
-            }
-        } else {
+    fun start(intent: Intent) {
+        viewModelScope.launch {
+            seedTestScenario(intent)
             waitForReferrerData()
+            showOnboardingOrHome()
         }
+    }
 
-        when (daxPrompts.evaluate()) {
-            NONE, TOO_SOON_TO_SHOW_OTHER_PROMPTS -> {
-                logcat { "daxPrompts evaluate: None action" }
-                showOnboardingOrHome()
-            }
-
-            SHOW_BROWSER_COMPARISON_PROMPT -> {
-                logcat { "daxPrompts evaluate: Browser Comparison Prompt action" }
-                command.value = Command.DaxPromptBrowserComparison
-            }
+    private suspend fun seedTestScenario(intent: Intent) {
+        runCatching {
+            testScenarioSeeder.seedIfNeeded(intent.extras.toStringMap())
         }
+        // runCatching swallows CancellationException; re-check so a cancelled viewModelScope
+        // (activity finished mid-launch) stops the rest of start() instead of routing into a dead UI.
+        currentCoroutineContext().ensureActive()
+    }
+
+    private fun Bundle?.toStringMap(): Map<String, String> {
+        if (this == null) return emptyMap()
+        return keySet().mapNotNull { key -> getString(key)?.let { key to it } }.toMap()
     }
 
     suspend fun showOnboardingOrHome() {
         if (userStageStore.isNewUser()) {
-            command.value = Command.Onboarding
+            if (brandDesignUpdateToggles.brandDesignUpdate().isEnabled()) {
+                val startState = newUserOnboardingPlanBootstrapper.startNewUserOnboardingPlan()
+                when (startState.currentStep.host) {
+                    LinearOnboardingHost.OnboardingActivity -> {
+                        command.value = Command.Onboarding
+                    }
+                    LinearOnboardingHost.BrowserActivity -> {
+                        command.value = Command.Home()
+                    }
+                    else -> {
+                        // extend to support initial hosts in the future
+                        throw IllegalArgumentException("unsupported initial onboarding host transition")
+                    }
+                }
+            } else {
+                command.value = Command.Onboarding
+            }
         } else {
             command.value = Command.Home()
         }
-    }
-
-    fun onDaxPromptBrowserComparisonActivityResult(showComparisonChart: Boolean? = false) {
-        if (showComparisonChart != null) {
-            appInstallStore.defaultBrowser = showComparisonChart
-        }
-        command.value = Command.CloseDaxPrompt
     }
 
     private suspend fun waitForReferrerData() {
@@ -113,8 +110,13 @@ class LaunchViewModel @Inject constructor(
         withTimeoutOrNull(MAX_REFERRER_WAIT_TIME_MS) {
             logcat { "Waiting for referrer" }
             return@withTimeoutOrNull appReferrerStateListener.waitForReferrerCode()
-        }
+        } ?: onReferrerTimeout()
 
         logcat { "Waited ${System.currentTimeMillis() - startTime}ms for referrer" }
+    }
+
+    private fun onReferrerTimeout() {
+        logcat(LogPriority.ERROR) { "LaunchViewModel timed out waiting for referrer" }
+        pixel.fire(AppPixelName.TIMEOUT_WAITING_FOR_APP_REFERRER)
     }
 }

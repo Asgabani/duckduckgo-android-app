@@ -18,6 +18,8 @@ package com.duckduckgo.sync.impl.ui.setup
 
 import app.cash.turbine.test
 import com.duckduckgo.common.test.CoroutineTestRule
+import com.duckduckgo.sync.impl.SyncFeatureToggle
+import com.duckduckgo.sync.impl.pixels.SyncPixels
 import com.duckduckgo.sync.impl.ui.setup.SetupAccountActivity.Companion.Screen.RECOVERY_INTRO
 import com.duckduckgo.sync.impl.ui.setup.SetupAccountActivity.Companion.Screen.SYNC_INTRO
 import com.duckduckgo.sync.impl.ui.setup.SyncSetupIntroViewModel.Command.AbortFlow
@@ -25,17 +27,25 @@ import com.duckduckgo.sync.impl.ui.setup.SyncSetupIntroViewModel.Command.Recover
 import com.duckduckgo.sync.impl.ui.setup.SyncSetupIntroViewModel.Command.StartSetupFlow
 import com.duckduckgo.sync.impl.ui.setup.SyncSetupIntroViewModel.ViewMode.CreateAccountIntro
 import com.duckduckgo.sync.impl.ui.setup.SyncSetupIntroViewModel.ViewMode.RecoverAccountIntro
+import com.duckduckgo.sync.impl.wideevents.SyncSetupWideEvent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert
 import org.junit.Rule
 import org.junit.Test
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 
 class SyncSetupIntroViewModelTest {
 
     @get:Rule
     val coroutineTestRule: CoroutineTestRule = CoroutineTestRule()
 
-    private val testee = SyncSetupIntroViewModel()
+    private val syncFeatureToggle: SyncFeatureToggle = mock()
+    private val syncSetupWideEvent: SyncSetupWideEvent = mock()
+    private val syncPixels: SyncPixels = mock()
+
+    private val testee = SyncSetupIntroViewModel(syncFeatureToggle, coroutineTestRule.testDispatcherProvider, syncSetupWideEvent, syncPixels)
 
     @Test
     fun whenSyncIntroArgumentThenIntroCreateAccountScreenShown() = runTest {
@@ -67,6 +77,31 @@ class SyncSetupIntroViewModelTest {
     }
 
     @Test
+    fun whenSyncIntroScreenThenOnIntroScreenShownCalled() = runTest {
+        testee.viewState(SYNC_INTRO).test {
+            awaitItem()
+            verify(syncSetupWideEvent).onIntroScreenShown()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun whenRecoveryIntroScreenThenOnIntroScreenShownNotCalled() = runTest {
+        testee.viewState(RECOVERY_INTRO).test {
+            awaitItem()
+            verifyNoInteractions(syncSetupWideEvent)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun whenOnTurnSyncOnClickedThenOnSyncEnabledCalled() = runTest {
+        testee.onTurnSyncOnClicked()
+
+        verify(syncSetupWideEvent).onSyncEnabled()
+    }
+
+    @Test
     fun whenOnStartRecoveryDataClickedThenRecoverDataFlowCommandSent() = runTest {
         testee.onStartRecoverDataClicked()
 
@@ -75,6 +110,13 @@ class SyncSetupIntroViewModelTest {
             Assert.assertTrue(command is RecoverDataFlow)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun whenOnStartRecoveryDataClickedThenRecoverSyncDataConfirmedPixelFired() = runTest {
+        testee.onStartRecoverDataClicked()
+
+        verify(syncPixels).fireRecoverSyncDataConfirmed()
     }
 
     @Test

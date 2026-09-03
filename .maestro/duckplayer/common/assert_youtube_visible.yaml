@@ -3,12 +3,12 @@ appId: com.duckduckgo.mobile.android
 # Assert YouTube video overlay is not shown
 - scrollUntilVisible:
       element:
-          id: "omnibarTextInput"
+          id: "omnibarTextInput|inputField"
       direction: UP
 
 # Wait for video to load
 - assertVisible:
-      text: "https://m.youtube.com/watch?v=3ml7yeKBUhc"
+      text: ".*m.youtube.com.*"
 
 - assertNotVisible:
       text: "duck://player/.*"

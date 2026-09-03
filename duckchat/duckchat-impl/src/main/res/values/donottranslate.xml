@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-  ~ Copyright (c) 2025 DuckDuckGo
+  ~ Copyright (c) 2026 DuckDuckGo
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -15,21 +15,32 @@
   -->
 
 <resources>
-    <!-- Duck AI SERP Settings Title -->
-    <string name="duckAiSerpSettingsTitle">AI Features</string>
 
-    <!-- Duck AI Search Section Header -->
-    <string name="duckAiSearchSettingsSectionHeader">Search</string>
+    <!-- Remove chat history suggestion -->
+    <string name="duck_chat_remove_chat_suggestion_content_description">Delete chat</string>
 
-    <!-- Duck AI Hide Generated Images Settings Option -->
-    <string name="duckAiHideAiGeneratedImagesTitle">Hide AI-Generated Images</string>
-    <string name="duckAiHideAiGeneratedImagesDescription">Filters out AI-generated images from image search results</string>
+    <!-- Subscription onboarding - Duck.ai step (placeholder copy) -->
+    <string name="subscriptionOnboardingDuckAiTitle">Duck.ai step</string>
+    <string name="subscriptionOnboardingDuckAiText">Duck.ai onboarding step</string>
+    <string name="subscriptionOnboardingDuckAiNext">Next</string>
 
-    <!-- Duck AI Fullscreen Mode -->
-    <string name="duckAiFullScreenModeTitle">Full Screen Mode</string>
-    <string name="duckAiFullScreenModeDescription">Internal setting for O-J work</string>
-    <string name="duckAiFullScreenModeOmnibarHint">Duck.ai</string>
+    <!-- Page context attachment -->
+    <string name="duckChatPageContextRemoveContentDescription">Remove page context</string>
 
-    <!-- Duck AI Voice Search Shortcut Setting -->
-    <string name="duckAiVoiceSearchVisibilitySetting">Voice Search</string>
+    <!-- Model provider names, shown in the onboarding provider choice -->
+    <string name="duckChatModelProviderOpenAi">ChatGPT</string>
+    <string name="duckChatModelProviderAnthropic">Claude</string>
+    <string name="duckChatModelProviderMistral">Mistral</string>
+
+    <!-- New tab toggle positions, shown in the onboarding toggle position choice -->
+    <string name="duckChatOnboardingNewTabTogglePositionDuckAi">Open tabs with AI chat</string>
+    <string name="duckChatOnboardingNewTabTogglePositionLastUsed">Not Now</string>
+
+    <!-- Duck.ai on/off, shown in the onboarding Duck.ai state choice -->
+    <string name="duckChatOnboardingDuckAiStateOn">Turn Duck.ai On</string>
+    <string name="duckChatOnboardingDuckAiStateOff">Keep Duck.ai Off</string>
+
+    <string name="duckChatContextualAskAboutSearch">Ask About Search</string>
+    <string name="duckChatContextualOpenDuckAi">Open Duck.ai</string>
+
 </resources>

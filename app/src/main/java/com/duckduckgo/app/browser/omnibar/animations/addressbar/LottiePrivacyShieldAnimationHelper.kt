@@ -16,9 +16,11 @@
 
 package com.duckduckgo.app.browser.omnibar.animations.addressbar
 
+import androidx.annotation.RawRes
 import com.airbnb.lottie.LottieAnimationView
 import com.duckduckgo.app.browser.R
-import com.duckduckgo.app.browser.animations.AddressBarTrackersAnimationFeatureToggle
+import com.duckduckgo.app.browser.animations.AddressBarTrackersAnimationManager
+import com.duckduckgo.app.browser.api.OmnibarRepository
 import com.duckduckgo.app.browser.omnibar.Omnibar.ViewMode
 import com.duckduckgo.app.global.model.PrivacyShield
 import com.duckduckgo.app.global.model.PrivacyShield.MALICIOUS
@@ -29,53 +31,115 @@ import com.duckduckgo.common.ui.store.AppTheme
 import com.duckduckgo.di.scopes.AppScope
 import com.squareup.anvil.annotations.ContributesBinding
 import dagger.SingleInstanceIn
+import kotlinx.coroutines.runBlocking
 import logcat.logcat
 import javax.inject.Inject
+import kotlin.to
 
 @ContributesBinding(AppScope::class)
 @SingleInstanceIn(AppScope::class)
-class LottiePrivacyShieldAnimationHelper @Inject constructor(
+class LottiePrivacyShieldAnimationHelper @Inject internal constructor(
     private val appTheme: AppTheme,
-    private val addressBarTrackersAnimationFeatureToggle: AddressBarTrackersAnimationFeatureToggle,
+    private val addressBarTrackersAnimationManager: AddressBarTrackersAnimationManager,
+    private val omnibarRepository: OmnibarRepository,
+    private val customTabShieldDrawableFactory: CustomTabShieldDrawableFactory,
 ) : PrivacyShieldAnimationHelper {
 
     override fun setAnimationView(
         holder: LottieAnimationView,
         privacyShield: PrivacyShield,
         viewMode: ViewMode,
-    ) {
-        val protectedShield: Int
-        val protectedShieldDark: Int
-        if (viewMode is ViewMode.CustomTab) {
-            protectedShield = R.raw.protected_shield_custom_tab
-            protectedShieldDark = R.raw.dark_protected_shield_custom_tab
+        useLightAnimation: Boolean?,
+        isAddressBarRebrandEnabled: Boolean,
+    ): Boolean {
+        val isLegacyCustomTab = viewMode is ViewMode.CustomTab && !omnibarRepository.isNewCustomTabEnabled
+        val isLightMode = useLightAnimation ?: appTheme.isLightModeEnabled()
+        val trackersAnimationEnabled = runBlocking { addressBarTrackersAnimationManager.isFeatureEnabled() }
+
+        val (assetRes, boxed) = resolveShieldAsset(
+            privacyShield,
+            isLightMode,
+            isLegacyCustomTab,
+            isAddressBarRebrandEnabled,
+            trackersAnimationEnabled,
+        )
+            ?: return false
+        val isStatic = when (privacyShield) {
+            UNPROTECTED, MALICIOUS -> isAddressBarRebrandEnabled
+            PROTECTED, UNKNOWN -> false
+        }
+        val customTabIsLightTheme = if (
+            isStatic &&
+            privacyShield == UNPROTECTED &&
+            viewMode is ViewMode.CustomTab &&
+            useLightAnimation != null
+        ) {
+            isLightMode
         } else {
-            if (addressBarTrackersAnimationFeatureToggle.feature().isEnabled()) {
-                protectedShield = R.raw.address_bar_trackers_animation_shield
-                protectedShieldDark = R.raw.address_bar_trackers_animation_shield
+            null
+        }
+
+        val assetKey = Triple(assetRes, isStatic, customTabIsLightTheme)
+        if (holder.tag != assetKey) {
+            if (isStatic) {
+                holder.cancelAnimation()
+                if (customTabIsLightTheme == null) {
+                    holder.setImageResource(assetRes)
+                } else {
+                    holder.setImageDrawable(
+                        customTabShieldDrawableFactory.create(holder.context, assetRes, customTabIsLightTheme),
+                    )
+                }
             } else {
-                protectedShield = R.raw.protected_shield
-                protectedShieldDark = R.raw.dark_protected_shield
+                holder.setImageDrawable(null)
+                holder.setAnimation(assetRes)
+                holder.progress = if (privacyShield == UNPROTECTED) 1.0f else 0.0f
             }
-        }
-        val unprotectedShield: Int = R.raw.unprotected_shield
-        val unprotectedShieldDark: Int = R.raw.dark_unprotected_shield
-
-        val currentAnimation = holder.tag as? Int
-        val newAnimation = when (privacyShield) {
-            PROTECTED -> if (appTheme.isLightModeEnabled()) protectedShield else protectedShieldDark
-            UNPROTECTED -> if (appTheme.isLightModeEnabled()) unprotectedShield else unprotectedShieldDark
-            UNKNOWN -> null
-            MALICIOUS -> if (appTheme.isLightModeEnabled()) R.raw.alert_red else R.raw.alert_red_dark
-        }
-
-        if (newAnimation != null && newAnimation != currentAnimation) {
-            holder.setAnimation(newAnimation)
-            holder.tag = newAnimation
-            holder.progress = if (privacyShield == UNPROTECTED) 1.0f else 0.0f
+            holder.tag = assetKey
             logcat { "Shield: $privacyShield" }
         } else {
             logcat { "Shield: $privacyShield - no change" }
         }
+
+        return boxed
+    }
+
+    internal fun resolveShieldAsset(
+        privacyShield: PrivacyShield,
+        isLightMode: Boolean,
+        isLegacyCustomTab: Boolean,
+        brandIconsEnabled: Boolean,
+        trackersAnimationEnabled: Boolean,
+    ): Pair<Int, Boolean>? {
+        if (privacyShield == UNKNOWN) return null
+
+        if (brandIconsEnabled) {
+            return when (privacyShield) {
+                PROTECTED -> R.raw.shield_color_24 to true
+                UNPROTECTED -> R.drawable.shield_alert_24 to true
+                MALICIOUS -> R.drawable.exclamation_recolorable_24 to true
+                UNKNOWN -> null
+            }
+        }
+
+        return when (privacyShield) {
+            PROTECTED -> legacyProtectedShield(isLightMode, isLegacyCustomTab, trackersAnimationEnabled) to false
+            UNPROTECTED -> (if (isLightMode) R.raw.unprotected_shield else R.raw.dark_unprotected_shield) to false
+            MALICIOUS -> (if (isLightMode) R.raw.alert_red else R.raw.alert_red_dark) to false
+            UNKNOWN -> null
+        }
+    }
+
+    @RawRes
+    private fun legacyProtectedShield(
+        isLightMode: Boolean,
+        isLegacyCustomTab: Boolean,
+        trackersAnimationEnabled: Boolean,
+    ): Int = when {
+        isLegacyCustomTab && isLightMode -> R.raw.protected_shield_custom_tab
+        isLegacyCustomTab -> R.raw.dark_protected_shield_custom_tab
+        trackersAnimationEnabled -> R.raw.address_bar_trackers_animation_shield
+        isLightMode -> R.raw.protected_shield
+        else -> R.raw.dark_protected_shield
     }
 }

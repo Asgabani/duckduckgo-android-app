@@ -18,9 +18,8 @@ package com.duckduckgo.app.browser.omnibar
 
 import androidx.lifecycle.LifecycleOwner
 import com.duckduckgo.app.FakeSettingsDataStore
-import com.duckduckgo.app.pixels.remoteconfig.AndroidBrowserConfigFeature
 import com.duckduckgo.app.settings.db.SettingsDataStore
-import com.duckduckgo.browser.ui.omnibar.OmnibarType
+import com.duckduckgo.browser.feature.toggles.AndroidBrowserConfigFeature
 import com.duckduckgo.common.test.CoroutineTestRule
 import com.duckduckgo.feature.toggles.api.FakeFeatureToggleFactory
 import com.duckduckgo.feature.toggles.api.Toggle
@@ -54,24 +53,21 @@ class OmnibarFeatureRepositoryTest {
 
     @Test
     fun `when onStart called, then feature flags are updated`() = runTest {
-        browserFeatures.useUnifiedOmnibarLayout().setRawStoredState(Toggle.State(enable = true))
         browserFeatures.splitOmnibar().setRawStoredState(Toggle.State(enable = true))
         createTestee()
 
         testee.onStart(mockLifecycleOwner)
 
-        assertTrue(testee.isUnifiedOmnibarFlagEnabled)
         assertTrue(testee.isSplitOmnibarAvailable)
     }
 
     @Test
     fun `given split omnibar enabled when split omnibar is disabled then omnibar type is reset`() = runTest {
         fakeSettingsDataStore.omnibarType = OmnibarType.SPLIT
-        browserFeatures.useUnifiedOmnibarLayout().setRawStoredState(Toggle.State(enable = true))
         browserFeatures.splitOmnibar().setRawStoredState(Toggle.State(enable = false))
         createTestee()
 
-        testee.updateFeatureFlags()
+        testee.onStart(mockLifecycleOwner)
 
         assertFalse(testee.isSplitOmnibarAvailable)
         assertEquals(OmnibarType.SINGLE_TOP, fakeSettingsDataStore.omnibarType)
@@ -81,11 +77,10 @@ class OmnibarFeatureRepositoryTest {
     fun `given split omnibar was previously selected when split omnibar is enabled then omnibar type is restored`() = runTest {
         fakeSettingsDataStore.omnibarType = OmnibarType.SINGLE_TOP
         fakeSettingsDataStore.isSplitOmnibarSelected = true
-        browserFeatures.useUnifiedOmnibarLayout().setRawStoredState(Toggle.State(enable = true))
         browserFeatures.splitOmnibar().setRawStoredState(Toggle.State(enable = true))
         createTestee()
 
-        testee.updateFeatureFlags()
+        testee.onStart(mockLifecycleOwner)
 
         assertTrue(testee.isSplitOmnibarAvailable)
         assertEquals(OmnibarType.SPLIT, fakeSettingsDataStore.omnibarType)
@@ -93,34 +88,31 @@ class OmnibarFeatureRepositoryTest {
 
     @Test
     fun `when split omnibar available and omnibar type is split then split omnibar enabled is true`() = runTest {
-        browserFeatures.useUnifiedOmnibarLayout().setRawStoredState(Toggle.State(enable = true))
         browserFeatures.splitOmnibar().setRawStoredState(Toggle.State(enable = true))
         fakeSettingsDataStore.omnibarType = OmnibarType.SPLIT
         createTestee()
-        testee.updateFeatureFlags()
+        testee.onStart(mockLifecycleOwner)
 
-        assertTrue(testee.isSplitOmnibarEnabled)
+        assertTrue(testee.omnibarType == OmnibarType.SPLIT)
     }
 
     @Test
     fun `when split omnibar not available then split omnibar enabled is false`() = runTest {
-        browserFeatures.useUnifiedOmnibarLayout().setRawStoredState(Toggle.State(enable = false))
-        browserFeatures.splitOmnibar().setRawStoredState(Toggle.State(enable = true))
+        browserFeatures.splitOmnibar().setRawStoredState(Toggle.State(enable = false))
         fakeSettingsDataStore.omnibarType = OmnibarType.SPLIT
         createTestee()
-        testee.updateFeatureFlags()
+        testee.onStart(mockLifecycleOwner)
 
-        assertFalse(testee.isSplitOmnibarEnabled)
+        assertFalse(testee.omnibarType == OmnibarType.SPLIT)
     }
 
     @Test
     fun `when omnibar type is not split then split omnibar enabled is false`() = runTest {
-        browserFeatures.useUnifiedOmnibarLayout().setRawStoredState(Toggle.State(enable = true))
         browserFeatures.splitOmnibar().setRawStoredState(Toggle.State(enable = true))
         fakeSettingsDataStore.omnibarType = OmnibarType.SINGLE_TOP
         createTestee()
-        testee.updateFeatureFlags()
+        testee.onStart(mockLifecycleOwner)
 
-        assertFalse(testee.isSplitOmnibarEnabled)
+        assertFalse(testee.omnibarType == OmnibarType.SPLIT)
     }
 }

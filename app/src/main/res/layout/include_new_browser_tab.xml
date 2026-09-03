@@ -33,6 +33,17 @@
         android:scaleType="centerCrop"
         tools:srcCompat="@drawable/onboarding_background_bitmap_light" />
 
+    <com.duckduckgo.app.onboarding.ui.view.OnboardingFillImageView
+        android:id="@+id/rebrandBrowserBackground"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="@dimen/onboardingBackgroundMaxHeight"
+        android:visibility="gone"
+        android:scaleType="fitEnd"
+        android:layout_gravity="bottom"
+        android:adjustViewBounds="true"
+        tools:srcCompat="@drawable/onboarding_background_bitmap_light" />
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/newTabPage"
         android:layout_width="match_parent"
@@ -55,13 +66,23 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent">
 
-            <FrameLayout
-                android:id="@+id/newTabContainerLayout"
+            <LinearLayout
+                android:id="@+id/newTabRootLayout"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent" />
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <com.duckduckgo.browser.ui.newtab.hatch.NewTabReturnHatchView
+                    android:id="@+id/newTabReturnHatchView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <FrameLayout
+                    android:id="@+id/newTabContainerLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+            </LinearLayout>
 
         </androidx.core.widget.NestedScrollView>
 
@@ -87,68 +108,28 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintWidth_max="600dp" />
 
-        <include
-            android:id="@+id/includeOnboardingBuckDialogBubble"
-            layout="@layout/include_onboarding_bubble_buck_dialog"
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/brandDesignDialogScrollView"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:fillViewport="true"
             android:visibility="gone"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintWidth_max="600dp" />
-
-        <include
-            android:id="@+id/includeOnboardingBBDialogBubble"
-            layout="@layout/include_onboarding_bubble_bb_dialog"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:visibility="gone"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintWidth_max="600dp" />
-
-        <com.airbnb.lottie.LottieAnimationView
-            android:id="@+id/buckMagnifyingGlassAnimation"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:adjustViewBounds="true"
-            android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintWidth_percent="0.64"
-            app:lottie_rawRes="@raw/ob_5_mag_glass" />
+            app:layout_constraintEnd_toEndOf="parent">
 
-        <com.airbnb.lottie.LottieAnimationView
-            android:id="@+id/wingAnimation"
-            android:layout_width="wrap_content"
-            android:layout_height="112dp"
-            android:adjustViewBounds="true"
-            android:importantForAccessibility="no"
-            android:visibility="gone"
-            app:layout_constrainedWidth="true"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:lottie_rawRes="@raw/ob_3_wing" />
+            <include
+                android:id="@+id/includeOnboardingDaxDialogBubbleBrandDesignUpdate"
+                layout="@layout/include_onboarding_bubble_dax_dialog_brand_design_update"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:visibility="gone" />
 
-        <com.airbnb.lottie.LottieAnimationView
-            android:id="@+id/buckEndAnimation"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:adjustViewBounds="true"
-            android:visibility="gone"
-            app:layout_constrainedHeight="true"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/includeOnboardingBuckDialogBubble"
-            app:layout_constraintVertical_bias="1"
-            app:layout_constraintWidth_max="600dp"
-            app:lottie_rawRes="@raw/ob_6_thumbs_up" />
+        </androidx.core.widget.NestedScrollView>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </FrameLayout>

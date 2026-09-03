@@ -20,22 +20,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <com.duckduckgo.app.browser.omnibar.OmnibarLayout
-        android:id="@+id/omnibarLayoutTop"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:elevation="1dp"
-        android:outlineProvider="none"
-        app:omnibarPosition="top" />
-
-    <com.duckduckgo.app.browser.omnibar.SingleOmnibarLayout
-        android:id="@+id/singleOmnibarLayoutTop"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:elevation="1dp"
-        android:outlineProvider="none"
-        app:omnibarPosition="top" />
-
     <FrameLayout
         android:id="@+id/webViewFullScreenContainer"
         android:layout_width="match_parent"
@@ -51,6 +35,7 @@
         android:background="?attr/daxColorBrowserOverlay"
         android:clipToPadding="false"
         android:elevation="2dp"
+        android:outlineProvider="none"
         app:layout_behavior="@string/appbar_scrolling_view_behavior"
         tools:itemCount="3"
         tools:listitem="@layout/item_autocomplete_search_suggestion"
@@ -62,6 +47,7 @@
         android:layout_height="match_parent"
         android:background="?attr/daxColorBrowserOverlay"
         android:elevation="2dp"
+        android:outlineProvider="none"
         app:layout_behavior="@string/appbar_scrolling_view_behavior"
         app:layout_scrollFlags="noScroll" />
 
@@ -111,13 +97,8 @@
                 android:visibility="gone" />
 
             <include
-                android:id="@+id/includeOnboardingInContextBuckDialog"
-                layout="@layout/include_onboarding_in_context_buck_dialog"
-                android:visibility="gone" />
-
-            <include
-                android:id="@+id/includeOnboardingInContextBBDialog"
-                layout="@layout/include_onboarding_in_context_bb_dialog"
+                android:id="@+id/includeOnboardingInContextDaxDialogBrandDesign"
+                layout="@layout/include_onboarding_in_context_dax_dialog_brand_design_update"
                 android:visibility="gone" />
 
             <include
@@ -144,6 +125,13 @@
                     app:layout_behavior="@string/appbar_scrolling_view_behavior"
                     tools:background="#4F00" />
 
+                <com.duckduckgo.app.browser.pdf.SwipeBlockingFrameLayout
+                    android:id="@+id/pdfViewerContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="?attr/daxColorBackdrop"
+                    android:visibility="gone" />
+
                 <include
                     android:id="@+id/includeErrorView"
                     layout="@layout/include_error_view"
@@ -168,21 +156,15 @@
 
     </RelativeLayout>
 
-    <com.duckduckgo.app.browser.omnibar.OmnibarLayout
-        android:id="@+id/omnibarLayoutBottom"
+    <FrameLayout
+        android:id="@+id/duckAiContextualFragmentContainer"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:outlineProvider="none"
-        app:omnibarPosition="bottom"  />
-
-    <com.duckduckgo.app.browser.omnibar.SingleOmnibarLayout
-        android:id="@+id/singleOmnibarLayoutBottom"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:outlineProvider="none"
-        app:omnibarPosition="bottom"  />
+        android:layout_height="match_parent"
+        android:elevation="12dp"
+        app:behavior_hideable="true"
+        app:behavior_skipCollapsed="true"
+        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior"
+        android:visibility="gone" />
 
     <com.duckduckgo.app.browser.navigation.bar.view.BrowserNavigationBarView
         android:id="@+id/navigationBar"

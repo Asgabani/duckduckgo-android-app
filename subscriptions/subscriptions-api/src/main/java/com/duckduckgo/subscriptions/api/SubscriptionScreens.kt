@@ -22,4 +22,9 @@ sealed class SubscriptionScreens {
     data object SubscriptionsSettingsScreenWithEmptyParams : ActivityParams
     data class RestoreSubscriptionScreenWithParams(val isOriginWeb: Boolean = true) : ActivityParams
     data class SubscriptionPurchase(val origin: String? = null, val featurePage: String? = null) : ActivityParams
+    data class SubscriptionUpgrade(val origin: String? = null) : ActivityParams
+    data object SubscriptionOnboardingScreenWithEmptyParams : ActivityParams
+    data class SubscriptionOnboardingFeatureInfoScreen(val feature: SubscriptionOnboardingFeature) : ActivityParams
 }
+
+enum class SubscriptionOnboardingFeature { VPN, ITR, DUCK_AI, PIR }

@@ -17,7 +17,6 @@
 package com.duckduckgo.mobile.android.vpn.ui.newtab
 
 import android.content.Context
-import android.os.Build
 import android.util.AttributeSet
 import android.view.View
 import android.widget.FrameLayout
@@ -91,9 +90,7 @@ class AppTrackingProtectionStateView @JvmOverloads constructor(
 
         configureViewReferences()
 
-        if (Build.VERSION.SDK_INT >= 28) {
-            binding.root.addBottomShadow()
-        }
+        binding.root.addBottomShadow()
     }
 
     override fun onDetachedFromWindow() {
@@ -205,6 +202,8 @@ class AppTrackingProtectionStateView @JvmOverloads constructor(
     AppScope::class,
     boundType = NewTabPageSectionPlugin::class,
     priority = NewTabPageSectionPlugin.PRIORITY_APP_TP,
+    featureName = "pluginAppTrackingProtectionNewTabPageSectionPlugin",
+    parentFeatureName = "pluginPointNewTabPageSectionPlugin",
 )
 class AppTrackingProtectionNewTabPageSectionPlugin @Inject constructor(
     private val vpnStore: VpnStore,

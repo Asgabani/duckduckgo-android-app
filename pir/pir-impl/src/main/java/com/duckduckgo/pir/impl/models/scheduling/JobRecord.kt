@@ -39,7 +39,12 @@ sealed class JobRecord(
      * @property lastOptOutAttemptDateInMillis Date (in milliseconds) of the last time the
      * opt-out job has been completed.
      * @property optOutRequestedDateInMillis Date (in milliseconds) when the opt-out request
-     * was successfully requested.
+     * was successfully requested. For brokers requiring email confirmation this is set when
+     * confirmation completes; for other brokers it equals the form-submission moment.
+     * @property optOutFormSubmittedDateInMillis Date (in milliseconds) of the first successful
+     * form submission to the broker. Set once and never overwritten on retries. Null for
+     * records created before this field was introduced and for child brokers (which do not run
+     * their own form submission).
      * @property optOutRemovedDateInMillis Date (in milliseconds) when the record was confirmed
      * to be removed from the broker.
      * @property deprecated Whether this job record is deprecated and should not be processed anymore (in most cases).
@@ -53,8 +58,14 @@ sealed class JobRecord(
         val attemptCount: Int = 0,
         val lastOptOutAttemptDateInMillis: Long = 0L,
         val optOutRequestedDateInMillis: Long = 0L,
+        val optOutFormSubmittedDateInMillis: Long? = null,
         val optOutRemovedDateInMillis: Long = 0L,
         val deprecated: Boolean = false,
+        val dateCreatedInMillis: Long = 0L,
+        val confirmation7dayReportSentDateMs: Long = 0L,
+        val confirmation14dayReportSentDateMs: Long = 0L,
+        val confirmation21dayReportSentDateMs: Long = 0L,
+        val confirmation42dayReportSentDateMs: Long = 0L,
     ) : JobRecord(brokerName, userProfileId) {
         enum class OptOutJobStatus {
             /** Opt-out has not been executed yet and should be executed when possible */
@@ -71,6 +82,9 @@ sealed class JobRecord(
 
             /** The job is waiting for email confirmation to complete before we can move it to [REQUESTED]. */
             PENDING_EMAIL_CONFIRMATION,
+
+            /** The profile was removed from the dashboard by the user. */
+            REMOVED_BY_USER,
         }
     }
 
@@ -90,6 +104,7 @@ sealed class JobRecord(
         val status: ScanJobStatus = ScanJobStatus.NOT_EXECUTED,
         val lastScanDateInMillis: Long = 0L,
         val deprecated: Boolean = false,
+        val dateCreatedInMillis: Long = 0L,
     ) : JobRecord(brokerName, userProfileId) {
         enum class ScanJobStatus {
             /** Scan has not been executed yet and should be executed when possible */

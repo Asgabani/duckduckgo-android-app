@@ -26,12 +26,11 @@ import com.duckduckgo.js.messaging.api.JsMessage
 import com.duckduckgo.js.messaging.api.JsMessageCallback
 import com.duckduckgo.js.messaging.api.JsMessageHandler
 import com.duckduckgo.js.messaging.api.JsMessaging
-import com.duckduckgo.settings.api.SettingsPageFeature
+import com.duckduckgo.settings.api.SerpSettingsFeature
 import com.duckduckgo.settings.impl.serpsettings.store.SerpSettingsDataStore
 import com.squareup.anvil.annotations.ContributesMultibinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import logcat.logcat
 import org.json.JSONObject
 import javax.inject.Inject
 
@@ -44,7 +43,7 @@ import javax.inject.Inject
 class GetNativeSettingsHandler @Inject constructor(
     private val dispatcherProvider: DispatcherProvider,
     @AppCoroutineScope private val appScope: CoroutineScope,
-    private val settingsPageFeature: SettingsPageFeature,
+    private val serpSettingsFeature: SerpSettingsFeature,
     private val serpSettingsDataStore: SerpSettingsDataStore,
 ) : ContentScopeJsMessageHandlersPlugin {
 
@@ -56,19 +55,16 @@ class GetNativeSettingsHandler @Inject constructor(
                 jsMessageCallback: JsMessageCallback?,
             ) {
                 appScope.launch(dispatcherProvider.io()) {
-                    if (settingsPageFeature.serpSettingsSync().isEnabled()) {
-                        logcat { "SERP-SETTINGS: GetNativeSettingsHandler processing message" }
-
+                    if (serpSettingsFeature.storeSerpSettings().isEnabled()) {
                         val settingsString = serpSettingsDataStore.getSerpSettings()
 
                         val settingsJsonObject = if (settingsString.isNullOrEmpty()) {
-                            // Return an empty JSON object if no settings are stored
-                            JSONObject()
+                            // Return noNativeSettings: true until settings have been updated by FE
+                            JSONObject().put(KEY_NO_NATIVE_SETTINGS, true)
                         } else {
                             JSONObject(settingsString)
                         }
 
-                        logcat { "SERP-SETTINGS: GetNativeSettingsHandler sending: $settingsJsonObject" }
                         jsMessage.id?.let { id ->
                             jsMessaging.onResponse(
                                 JsCallbackData(
@@ -90,5 +86,6 @@ class GetNativeSettingsHandler @Inject constructor(
 
     companion object {
         private const val GET_NATIVE_SETTINGS_METHOD_NAME = "getNativeSettings"
+        private const val KEY_NO_NATIVE_SETTINGS = "noNativeSettings"
     }
 }

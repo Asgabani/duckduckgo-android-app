@@ -29,14 +29,19 @@ import com.duckduckgo.app.global.DuckDuckGoApplication
 import com.duckduckgo.app.pixels.AppPixelName.SEARCH_WIDGET_ADDED
 import com.duckduckgo.app.pixels.AppPixelName.SEARCH_WIDGET_DELETED
 import com.duckduckgo.app.systemsearch.SystemSearchActivity
+import dev.zacsweers.metro.HasMemberInjections
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import logcat.logcat
 import javax.inject.Inject
 
-class SearchWidgetLight : SearchWidget(R.layout.search_widget_light)
+class SearchWidgetLight : SearchWidget(R.layout.search_widget_light, WidgetTheme.LIGHT)
 
-open class SearchWidget(val layoutId: Int = R.layout.search_widget_dark) : AppWidgetProvider() {
+@HasMemberInjections
+open class SearchWidget(
+    val layoutId: Int = R.layout.search_widget_dark,
+    private val widgetTheme: WidgetTheme = WidgetTheme.DARK,
+) : AppWidgetProvider() {
 
     @Inject
     lateinit var searchWidgetConfigurator: SearchWidgetConfigurator
@@ -107,6 +112,7 @@ open class SearchWidget(val layoutId: Int = R.layout.search_widget_dark) : AppWi
                 context = context,
                 remoteViews = views,
                 fromFavWidget = false,
+                widgetTheme = widgetTheme,
             )
             appWidgetManager.updateAppWidget(appWidgetId, views)
             logcat { "SearchWidget updateAppWidget completed for widget id = $appWidgetId" }

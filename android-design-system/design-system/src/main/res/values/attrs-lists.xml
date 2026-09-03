@@ -21,6 +21,7 @@
     <attr name="twoLineListItemStyle" format="reference"/>
 
     <attr name="primaryText" format="string"/>
+    <attr name="primaryTextAppearance" format="reference"/>
     <attr name="primaryTextColorOverlay" format="color"/>
     <attr name="primaryTextTruncated" format="boolean"/>
     <attr name="primaryTextType">
@@ -30,19 +31,14 @@
         <enum name="destructive" value="1" />
     </attr>
     <attr name="secondaryText" format="string"/>
+    <attr name="secondaryTextAppearance" format="reference"/>
     <attr name="secondaryTextColorOverlay" format="color"/>
     <attr name="leadingIcon" format="integer"/>
+    <attr name="leadingIconTint" format="reference|color"/>
     <attr name="trailingIcon" format="integer"/>
     <attr name="trailingIconTint" format="reference|color"/>
-    <attr name="showBetaPill" format="boolean"/>
-    <attr name="pillIcon">
-        <enum name="none" value="0" />
-        <!-- Beta Pill -->
-        <enum name="betaPill" value="1" />
-        <!-- New Pill -->
-        <enum name="newPill" value="2" />
-    </attr>
-    <attr name="showNewPill" format="boolean"/>
+    <attr name="pillIcon" format="boolean"/>
+    <attr name="pillText" format="string"/>
     <attr name="showSwitch" format="boolean"/>
     <attr name="switchEnabled" format="boolean"/>
     <attr name="leadingIconBackground">
@@ -90,22 +86,26 @@
         <attr name="trailingIconTint"/>
         <attr name="showSwitch"/>
         <attr name="switchEnabled"/>
-        <attr name="showNewPill"/>
+        <attr name="pillIcon"/>
+        <attr name="pillText"/>
     </declare-styleable>
 
     <!--Two Line Item view-->
     <declare-styleable name="TwoLineListItem">
         <attr name="primaryText"/>
+        <attr name="primaryTextAppearance"/>
         <attr name="primaryTextColorOverlay"/>
         <attr name="primaryTextTruncated"/>
         <attr name="secondaryText"/>
+        <attr name="secondaryTextAppearance"/>
         <attr name="secondaryTextColorOverlay"/>
         <attr name="leadingIcon"/>
         <attr name="leadingIconBackground"/>
         <attr name="leadingIconSize"/>
         <attr name="trailingIcon"/>
         <attr name="trailingIconSize"/>
-        <attr name="showBetaPill"/>
+        <attr name="pillIcon"/>
+        <attr name="pillText"/>
         <attr name="showSwitch"/>
         <attr name="switchEnabled"/>
     </declare-styleable>

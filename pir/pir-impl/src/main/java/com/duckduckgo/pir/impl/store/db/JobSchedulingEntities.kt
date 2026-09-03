@@ -16,6 +16,7 @@
 
 package com.duckduckgo.pir.impl.store.db
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -29,6 +30,7 @@ data class ScanJobRecordEntity(
     val status: String,
     val lastScanDateInMillis: Long? = null,
     val deprecated: Boolean = false,
+    val dateCreatedInMillis: Long,
 )
 
 @Entity(tableName = "pir_optout_job_record")
@@ -40,8 +42,19 @@ data class OptOutJobRecordEntity(
     val attemptCount: Int = 0,
     val lastOptOutAttemptDate: Long? = null,
     val optOutRequestedDate: Long = 0L,
+    val optOutFormSubmittedDate: Long? = null,
     val optOutRemovedDate: Long = 0L,
     val deprecated: Boolean = false,
+    val dateCreatedInMillis: Long,
+    @Embedded(prefix = "reporting_")
+    val reporting: ReportingRecord,
+)
+
+data class ReportingRecord(
+    val sevenDayConfirmationReportSentDateMs: Long = 0L,
+    val fourteenDayConfirmationReportSentDateMs: Long = 0L,
+    val twentyOneDayConfirmationReportSentDateMs: Long = 0L,
+    val fortyTwoDayConfirmationReportSentDateMs: Long = 0L,
 )
 
 @Entity(tableName = "pir_email_confirmation_job_record")

@@ -24,6 +24,7 @@ import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
 import android.text.style.URLSpan
 import android.view.View
+import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -33,19 +34,27 @@ import com.duckduckgo.browser.api.ui.BrowserScreens.WebViewActivityWithParams
 import com.duckduckgo.common.ui.DuckDuckGoActivity
 import com.duckduckgo.common.ui.view.getColorFromAttr
 import com.duckduckgo.common.ui.viewbinding.viewBinding
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeBucket
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeHandler
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeProvider
 import com.duckduckgo.common.utils.extensions.html
 import com.duckduckgo.di.scopes.ActivityScope
 import com.duckduckgo.duckchat.api.DuckChat
+import com.duckduckgo.duckchat.api.DuckChatEntryPoint
+import com.duckduckgo.duckchat.api.DuckChatSettingsNoParams
 import com.duckduckgo.duckchat.impl.R.string
 import com.duckduckgo.duckchat.impl.databinding.ActivityDuckAiPaidSettingsBinding
 import com.duckduckgo.duckchat.impl.subscription.DuckAiPaidSettingsViewModel.Command
 import com.duckduckgo.duckchat.impl.subscription.DuckAiPaidSettingsViewModel.Command.LaunchLearnMoreWebPage
 import com.duckduckgo.duckchat.impl.subscription.DuckAiPaidSettingsViewModel.Command.OpenDuckAi
-import com.duckduckgo.mobile.android.R
+import com.duckduckgo.duckchat.impl.subscription.DuckAiPaidSettingsViewModel.Command.OpenDuckChatSettings
+import com.duckduckgo.duckchat.impl.subscription.DuckAiPaidSettingsViewModel.ViewState
 import com.duckduckgo.navigation.api.GlobalActivityStarter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
+import com.duckduckgo.duckchat.impl.R as DuckChatR
+import com.duckduckgo.mobile.android.R as CommonR
 
 object DuckAiPaidSettingsNoParams : GlobalActivityStarter.ActivityParams
 
@@ -56,6 +65,12 @@ class DuckAiPaidSettingsActivity : DuckDuckGoActivity() {
     @Inject lateinit var globalActivityStarter: GlobalActivityStarter
 
     @Inject lateinit var duckChat: DuckChat
+
+    @Inject
+    lateinit var edgeToEdgeProvider: EdgeToEdgeProvider
+
+    @Inject
+    lateinit var edgeToEdgeHandler: EdgeToEdgeHandler
 
     private val viewModel: DuckAiPaidSettingsViewModel by bindViewModel()
     private val binding: ActivityDuckAiPaidSettingsBinding by viewBinding()
@@ -70,7 +85,7 @@ class DuckAiPaidSettingsActivity : DuckDuckGoActivity() {
 
         override fun updateDrawState(ds: TextPaint) {
             super.updateDrawState(ds)
-            ds.color = getColorFromAttr(R.attr.daxColorAccentBlue)
+            ds.color = getColorFromAttr(CommonR.attr.daxColorAccentBlue)
             ds.isUnderlineText = false
         }
     }
@@ -78,17 +93,35 @@ class DuckAiPaidSettingsActivity : DuckDuckGoActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val edgeToEdgeEnabled = edgeToEdgeProvider.isEnabled(EdgeToEdgeBucket.SETTINGS)
+        if (edgeToEdgeEnabled) {
+            enableTransparentEdgeToEdge()
+        }
+
         setContentView(binding.root)
         setupToolbar(toolbar)
+
+        if (edgeToEdgeEnabled) {
+            configureEdgeToEdgeInsets()
+        }
 
         configureUiEventHandlers()
         configureClickableLink()
         observeViewModel()
     }
 
+    private fun configureEdgeToEdgeInsets() {
+        edgeToEdgeHandler.applyHorizontalSystemBarInsets(binding.root)
+        edgeToEdgeHandler.applyStatusBarInsets(binding.includeToolbar.appBarLayout)
+        edgeToEdgeHandler.applyNavigationBarInsets(binding.contentScrollView, drawBehindGestureNav = true)
+    }
+
     private fun configureUiEventHandlers() {
         binding.duckAiPaidSettingsOpenDuckAi.setOnClickListener {
             viewModel.onOpenDuckAiSelected()
+        }
+        binding.duckAiPaidSettingsEnableInSettings.setOnClickListener {
+            viewModel.onEnableInSettingsSelected()
         }
     }
 
@@ -97,6 +130,35 @@ class DuckAiPaidSettingsActivity : DuckDuckGoActivity() {
             .flowWithLifecycle(lifecycle, Lifecycle.State.STARTED)
             .onEach { processCommand(it) }
             .launchIn(lifecycleScope)
+
+        viewModel.viewState
+            .flowWithLifecycle(lifecycle, Lifecycle.State.STARTED)
+            .onEach { viewState -> viewState?.let { renderViewState(it) } }
+            .launchIn(lifecycleScope)
+    }
+
+    private fun renderViewState(viewState: ViewState) {
+        with(binding) {
+            duckAiPaidSettingsIcon.setImageResource(DuckChatR.drawable.duckai_128)
+
+            statusIndicator.setStatus(viewState.isDuckAIEnabled)
+            duckAiPaidSettingsOpenDuckAi.isVisible = viewState.isDuckAIEnabled
+            duckAiPaidSettingsEnableInSettings.isVisible = true
+            duckAiPaidSettingsEnableInSettings.setPrimaryText(
+                if (viewState.isDuckAIEnabled) {
+                    getString(string.duck_ai_paid_settings_manage_in_settings)
+                } else {
+                    getString(string.duck_ai_paid_settings_enable_in_settings)
+                },
+            )
+            duckAiPaidSettingsEnableInSettings.setSecondaryText(
+                if (viewState.isDuckAIEnabled) {
+                    getString(string.duck_ai_paid_settings_manage_secondary)
+                } else {
+                    ""
+                },
+            )
+        }
     }
 
     private fun processCommand(command: Command) {
@@ -107,7 +169,11 @@ class DuckAiPaidSettingsActivity : DuckDuckGoActivity() {
             }
 
             OpenDuckAi -> {
-                duckChat.openDuckChat()
+                duckChat.openDuckChat(DuckChatEntryPoint.PAID_SETTINGS)
+            }
+
+            OpenDuckChatSettings -> {
+                globalActivityStarter.start(this, DuckChatSettingsNoParams)
             }
         }
     }

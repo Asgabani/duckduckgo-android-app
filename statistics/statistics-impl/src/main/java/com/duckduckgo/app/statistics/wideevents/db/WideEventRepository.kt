@@ -26,6 +26,9 @@ interface WideEventRepository {
         flowEntryPoint: String?,
         metadata: Map<String, String?>,
         cleanupPolicy: CleanupPolicy,
+        samplingProbability: Float = 1.0f,
+        metaType: String,
+        metaVersion: String,
     ): Long
 
     suspend fun addWideEventStep(
@@ -44,9 +47,11 @@ interface WideEventRepository {
 
     suspend fun getActiveWideEventIds(): List<Long>
 
+    suspend fun getCompletedWideEventIds(): List<Long>
+
     suspend fun getActiveWideEventIdsByName(eventName: String): List<Long>
 
-    fun getCompletedWideEventIdsFlow(): Flow<Set<Long>>
+    fun hasCompletedWideEvents(): Flow<Boolean>
 
     suspend fun getWideEvents(ids: Set<Long>): List<WideEvent>
 
@@ -54,6 +59,7 @@ interface WideEventRepository {
         eventId: Long,
         name: String,
         timeout: Duration?,
+        buckets: List<Duration>?,
     )
 
     suspend fun endInterval(
@@ -71,6 +77,10 @@ interface WideEventRepository {
         val cleanupPolicy: CleanupPolicy,
         val activeIntervals: List<WideEventInterval>,
         val createdAt: Instant,
+        val samplingProbability: Float = 1.0f,
+        val metaType: String,
+        val metaVersion: String,
+        val isFirstDailyOccurrence: Boolean = false,
     )
 
     data class WideEventStep(
@@ -106,5 +116,6 @@ interface WideEventRepository {
         val name: String,
         val startedAt: Instant,
         val timeout: Duration?,
+        val buckets: List<Duration>?,
     )
 }

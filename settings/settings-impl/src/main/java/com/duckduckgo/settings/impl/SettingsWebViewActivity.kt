@@ -29,17 +29,19 @@ import com.duckduckgo.anvil.annotations.InjectWith
 import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.common.ui.DuckDuckGoActivity
 import com.duckduckgo.common.ui.viewbinding.viewBinding
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeBucket
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeHandler
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeProvider
 import com.duckduckgo.di.scopes.ActivityScope
 import com.duckduckgo.js.messaging.api.JsMessageCallback
 import com.duckduckgo.js.messaging.api.JsMessaging
 import com.duckduckgo.navigation.api.getActivityParams
-import com.duckduckgo.settings.api.SettingsPageFeature
+import com.duckduckgo.settings.api.SerpSettingsFeature
 import com.duckduckgo.settings.api.SettingsWebViewScreenWithParams
 import com.duckduckgo.settings.impl.databinding.ActivitySettingsWebviewBinding
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import logcat.logcat
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Named
@@ -60,7 +62,13 @@ class SettingsWebViewActivity : DuckDuckGoActivity() {
     lateinit var settingsWebViewClient: SettingsWebViewClient
 
     @Inject
-    lateinit var settingsPageFeature: SettingsPageFeature
+    lateinit var serpSettingsFeature: SerpSettingsFeature
+
+    @Inject
+    lateinit var edgeToEdgeProvider: EdgeToEdgeProvider
+
+    @Inject
+    lateinit var edgeToEdgeHandler: EdgeToEdgeHandler
 
     private val binding: ActivitySettingsWebviewBinding by viewBinding()
 
@@ -75,8 +83,17 @@ class SettingsWebViewActivity : DuckDuckGoActivity() {
         val url = params?.url
         title = params?.screenTitle.orEmpty()
 
+        val edgeToEdgeEnabled = edgeToEdgeProvider.isEnabled(EdgeToEdgeBucket.WEBVIEW)
+        if (edgeToEdgeEnabled) {
+            enableTransparentEdgeToEdge()
+        }
+
         setContentView(binding.root)
         setupToolbar(toolbar)
+
+        if (edgeToEdgeEnabled) {
+            configureEdgeToEdgeInsets()
+        }
 
         lifecycleScope.launch {
             setupWebView()
@@ -87,6 +104,12 @@ class SettingsWebViewActivity : DuckDuckGoActivity() {
         }
 
         observeSubscriptionEventDataChannel()
+    }
+
+    private fun configureEdgeToEdgeInsets() {
+        edgeToEdgeHandler.applyHorizontalSystemBarInsets(binding.root)
+        edgeToEdgeHandler.applyStatusBarInsets(binding.includeToolbar.appBarLayout)
+        edgeToEdgeHandler.applyNavigationBarInsets(binding.webViewContainer, drawBehindGestureNav = true)
     }
 
     override fun onResume() {
@@ -125,14 +148,13 @@ class SettingsWebViewActivity : DuckDuckGoActivity() {
 
     private fun observeSubscriptionEventDataChannel() {
         viewModel.subscriptionEventDataFlow.onEach { subscriptionEventData ->
-            logcat { "SERP-Settings: Sending subscription event data to content scope scripts: $subscriptionEventData" }
             contentScopeScripts.sendSubscriptionEvent(subscriptionEventData)
         }.launchIn(lifecycleScope)
     }
 
     private fun exit() {
         binding.settingsWebView.stopLoading()
-        binding.root.removeView(binding.settingsWebView)
+        binding.webViewContainer.removeView(binding.settingsWebView)
         binding.settingsWebView.destroy()
 
         finish()
@@ -154,7 +176,7 @@ class SettingsWebViewActivity : DuckDuckGoActivity() {
                 setSupportZoom(true)
             }
 
-            if (settingsPageFeature.serpSettingsSync().isEnabled()) {
+            if (serpSettingsFeature.storeSerpSettings().isEnabled()) {
                 webView.webViewClient = settingsWebViewClient
 
                 contentScopeScripts.register(

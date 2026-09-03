@@ -16,6 +16,10 @@
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <application>
         <activity
             android:name="com.duckduckgo.duckchat.impl.ui.settings.DuckChatSettingsActivity"
@@ -28,16 +32,23 @@
             android:label="@string/duck_ai_shortcut_settings_title"
             android:parentActivityName="com.duckduckgo.duckchat.impl.ui.settings.DuckChatSettingsActivity" />
         <activity
-            android:name="com.duckduckgo.duckchat.impl.ui.DuckChatWebViewActivity"
+            android:name="com.duckduckgo.duckchat.impl.history.ChatHistoryActivity"
             android:exported="false"
-            android:label="@string/duck_chat_title"
-            android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|navigation|keyboard"/>
-        <activity
-            android:name="com.duckduckgo.duckchat.impl.inputscreen.ui.InputScreenActivity"
-            android:exported="false" />
+            android:label="@string/duck_ai_chat_history_title" />
         <activity
             android:name=".subscription.DuckAiPaidSettingsActivity"
             android:exported="false"
             android:label="@string/duck_ai_paid_settings_title"/>
+        <activity
+            android:name=".ui.nativeinput.edit.EditPromptActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
+            android:exported="false"
+            android:label="@string/duck_ai_edit_prompt_title"
+            android:windowSoftInputMode="stateVisible|adjustResize" />
+
+        <service
+            android:name=".ui.DuckChatVoiceMicrophoneService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
     </application>
 </manifest>

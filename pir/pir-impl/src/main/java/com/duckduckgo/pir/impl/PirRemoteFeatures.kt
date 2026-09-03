@@ -22,6 +22,7 @@ import com.duckduckgo.di.scopes.AppScope
 import com.duckduckgo.feature.toggles.api.Toggle
 import com.duckduckgo.feature.toggles.api.Toggle.DefaultFeatureValue
 import com.duckduckgo.feature.toggles.api.Toggle.DefaultValue
+import com.duckduckgo.feature.toggles.api.Toggle.InternalAlwaysEnabled
 import com.duckduckgo.pir.api.PirFeature
 import com.duckduckgo.pir.api.dashboard.PirFeatureState
 import com.duckduckgo.pir.impl.store.PirRepository
@@ -39,7 +40,34 @@ interface PirRemoteFeatures {
     fun self(): Toggle
 
     @DefaultValue(DefaultFeatureValue.FALSE)
+    @InternalAlwaysEnabled
     fun pirBeta(): Toggle
+
+    @DefaultValue(DefaultFeatureValue.TRUE)
+    fun useBundledBrokerJsons(): Toggle
+
+    @DefaultValue(DefaultFeatureValue.INTERNAL)
+    fun trackerBlocking(): Toggle
+
+    @DefaultValue(DefaultFeatureValue.INTERNAL)
+    fun ensureBrokerDataBeforeScan(): Toggle
+
+    @DefaultValue(DefaultFeatureValue.TRUE)
+    fun sendScanWideEvent(): Toggle
+
+    /**
+     * When enabled, opening the dashboard with an interrupted initial scan (pending scan jobs,
+     * no scan currently running) restarts the foreground scan to finish it.
+     */
+    @DefaultValue(DefaultFeatureValue.TRUE)
+    fun resumeInitialScanOnDashboardOpen(): Toggle
+
+    /**
+     * Kill-switch for the work queue. When disabled, runner work distribution falls
+     * back to static equal-count partitioning.
+     */
+    @DefaultValue(DefaultFeatureValue.TRUE)
+    fun workQueueScheduling(): Toggle
 }
 
 @SingleInstanceIn(AppScope::class)

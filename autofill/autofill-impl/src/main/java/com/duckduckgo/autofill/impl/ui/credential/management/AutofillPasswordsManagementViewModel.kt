@@ -324,7 +324,7 @@ class AutofillPasswordsManagementViewModel @Inject constructor(
             return
         }
 
-        val credentialCount = autofillStore.getCredentialCount().firstOrNull()
+        val credentialCount = autofillStore.getCredentialCount().firstOrNull()?.getOrThrow()
         val shouldAskAuth = credentialCount == null || credentialCount == 0
         if (shouldAskAuth) {
             logcat(VERBOSE) { "No credentials; can skip showing device auth" }
@@ -428,7 +428,10 @@ class AutofillPasswordsManagementViewModel @Inject constructor(
     fun onViewCreated() {
         if (combineJob != null) return
         combineJob = viewModelScope.launch(dispatchers.io()) {
-            _viewState.value = _viewState.value.copy(autofillEnabled = autofillStore.autofillEnabled)
+            _viewState.value = _viewState.value.copy(
+                autofillEnabled = autofillStore.autofillEnabled,
+                prioritizeDomainMatchesOnSearch = autofillFeature.prioritizeDomainMatchesOnSearch().isEnabled(),
+            )
 
             val allCredentials = autofillStore.getAllCredentials().distinctUntilChanged()
             val combined = allCredentials.combine(searchQueryFilter) { credentials, filter ->
@@ -678,8 +681,10 @@ class AutofillPasswordsManagementViewModel @Inject constructor(
             logcat(VERBOSE) { "Opened autofill management screen from from $launchSource" }
 
             val source = launchSource.asString()
-            val hasCredentialsSaved = (autofillStore.getCredentialCount().firstOrNull() ?: 0) > 0
+            val hasCredentialsSaved = (autofillStore.getCredentialCount().firstOrNull()?.getOrThrow() ?: 0) > 0
             pixel.fire(AUTOFILL_MANAGEMENT_SCREEN_OPENED, mapOf("source" to source, "has_credentials_saved" to hasCredentialsSaved.toBinaryString()))
+            pixel.fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+            pixel.fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
         }
     }
 
@@ -820,6 +825,7 @@ class AutofillPasswordsManagementViewModel @Inject constructor(
         val reportBreakageState: ReportBreakageState = ReportBreakageState(),
         val canShowPromo: Boolean = false,
         val canImportFromGooglePasswords: Boolean = false,
+        val prioritizeDomainMatchesOnSearch: Boolean = false,
     )
 
     data class ReportBreakageState(

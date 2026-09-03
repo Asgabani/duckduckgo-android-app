@@ -18,6 +18,10 @@ package com.duckduckgo.app.statistics.wideevents.db
 
 import android.content.Context
 import androidx.room.Room
+import com.duckduckgo.app.statistics.wideevents.db.migration.WideEventsMigration1To2
+import com.duckduckgo.app.statistics.wideevents.db.migration.WideEventsMigration2To3
+import com.duckduckgo.app.statistics.wideevents.db.migration.WideEventsMigration3To4
+import com.duckduckgo.app.statistics.wideevents.db.migration.WideEventsMigration4To5
 import com.duckduckgo.di.scopes.AppScope
 import com.squareup.anvil.annotations.ContributesTo
 import dagger.Module
@@ -38,7 +42,10 @@ class WideEventDatabaseModule {
                 context = context,
                 klass = WideEventDatabase::class.java,
                 name = "wide_events.db",
-            ).fallbackToDestructiveMigration()
+            )
+            .addMigrations(WideEventsMigration1To2, WideEventsMigration2To3, WideEventsMigration3To4, WideEventsMigration4To5)
+            .fallbackToDestructiveMigration()
+            .enableMultiInstanceInvalidation()
             .addTypeConverter(wideEventEntityTypeConverters)
             .build()
 

@@ -84,6 +84,7 @@
     <string name="subscriptionSettingSectionHelpAndSupport">Pomoc i wsparcie</string>
     <string name="subscriptionSettingSendFeedback">Wyślij opinię</string>
     <string name="subscriptionSettingActivating">Aktywacja</string>
+    <string name="subscriptionSettingManagePlan">Zarządzaj płatnością</string>
 
     <!--Purchase Subscriptions-->
     <string name="purchaseCompletedTitle">Wszystko gotowe.</string>
@@ -103,8 +104,8 @@
     <string name="changePlanDescription">Twoja subskrypcja została zakupiona za pośrednictwem sklepu Apple App Store. Aby zmienić plan lub ustawienia rozliczeń, wybierz kolejno Ustawienia &gt; Konto Apple &gt; Subskrypcje na urządzeniu zalogowanym na konto Apple wykorzystane do zakupu subskrypcji.</string>
 
     <!-- PIR Activity-->
-    <string name="pirTitle">Aktywuj Privacy Pro na komputerze, aby skonfigurować usługę Personal Information Removal</string>
-    <string name="pirDescription">W przeglądarce DuckDuckGo na komputerze wybierz kolejno <b>Ustawienia &gt; Privacy Pro</b> i kliknij opcję <b>Mam subskrypcję</b>, aby rozpocząć.</string>
+    <string name="pirTitle">Aktywuj subskrypcję DuckDuckGo na komputerze, aby skonfigurować usługę Personal Information Removal</string>
+    <string name="pirDescription">W przeglądarce DuckDuckGo na komputerze przejdź do <b>Ustawień &gt; Subskrybuj DuckDuckGo</b> i kliknij <b>Mam subskrypcję</b>, aby zacząć.</string>
     <string name="pirWindowsButton" translatable="false">Windows</string>
     <string name="pirMacOsButton" translatable="false">Mac</string>
 
@@ -147,18 +148,14 @@
     <string name="feedbackSubCategoryItrAdvisorUnhelpful">Połączenie z doradcą nie pomogło</string>
     <string name="feedbackSubCategoryItrOther">Inne</string>
 
-    <string name="feedbackSubCategorySubsOtp">Hasło jednorazowe</string>
-    <string name="feedbackSubCategorySubsOther">Inne</string>
+    <string name="feedbackSubCategorySubsOtp">Problem z hasłem jednorazowym</string>
+    <string name="feedbackSubCategorySubsOther">Coś innego</string>
 
     <string name="feedbackSubmitVpnHeader">Wystąpił problem, który nie został omówiony w naszym <annotation type="faqs_link">centrum pomocy</annotation>? Zdecydowanie chcemy o tym wiedzieć.\n\n</string>
     <string name="feedbackSubmitVpnDescriptionHint">Powiedz nam, co się dzieje…</string>
     <string name="feedbackSubmitVpnDisclaimer">"Oprócz szczegółów podanych powyżej wysyłamy wraz z opinią następujące zanonimizowane informacje:\n\n• Czy niektóre funkcje przeglądarki są aktywne\n• Zbiorcza diagnostyka aplikacji (np. kody błędów)\n\n Klikając przycisk przesyłania, wyrażasz zgodę na możliwość wykorzystania przez DuckDuckGo przesłanych informacji w celu ulepszenia aplikacji."</string>
     <string name="feedbackSubmitVpnSubmit">Wyślij</string>
     <string name="feedbackSubmitCompletedMessage">Dziękujemy! Informacje zostały przekazane.</string>
-    <string name="feedbackSubmitFailedMessage">Wystąpił błąd</string>
-
-    <string name="feedbackSubmitEmailByLine">Podaj adres e-mail, jeśli wyrażasz zgodę na kontakt w tej sprawie (możemy nie być w stanie odpowiedzieć na wszystkie zgłoszenia):</string>
-    <string name="feedbackSubmitEmailHint">Adres e-mail (opcjonalnie)</string>
 
     <string name="feedbackSubmitGeneralDescriptionHint">Przekaż opinię...</string>
     <string name="feedbackSubmitFeatureRequestDescriptionHint">Na jakiej funkcji Ci zależy?</string>
@@ -168,16 +165,7 @@
     <string name="activitySubscriptions">Subskrypcje</string>
     <string name="activitySubscriptionSettings">Ustawienia subskrypcji</string>
     <string name="activityActivateSubscription">Mam subskrypcję</string>
-    <string name="activityPir" translatable="false">Privacy Pro</string>
     <string name="activitySendFeedback">Wyślij opinię</string>
-
-    <!-- Dynamic Switch % -->
-    <string name="switchBottomSheetDynamicTitleUpgrade" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Zaoszczędź %1$s%%\nz planem rocznym!</string>
-    <string name="switchBottomSheetDynamicTitleDowngrade" instruction="%1$s is the savings percentage when using a yearly plan instead of monthly (e.g. 16)">Oszczędzasz %1$s%% \nz planem rocznym!</string>
-    <string name="subscriptionSettingSwitchUpgradeDynamic" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Przejdź na plan roczny i zaoszczędź %1$s%%</string>
-
-    <!-- Privacy Pro Rebranding-->
-    <string name="subscriptionSettingRebrandingMessage">Privacy Pro jest teraz po prostu nazywane subskrypcją DuckDuckGo</string>
 
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitle">Subskrybenci otrzymują VPN, zaawansowane modele sztucznej inteligencji w Duck.ai, usługi Personal Information Removal oraz Identity Theft Restoration.</string>
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitleRow">Subskrybenci otrzymują usługi VPN oraz Identity Theft Restoration i zaawansowane modele sztucznej inteligencji w Duck.ai.</string>
@@ -187,9 +175,32 @@
     <string name="feedbackSubCategoryDuckAiLoginThirdPartyBrowser">Nie można uzyskać dostępu do Duck.ai przy użyciu mojej subskrypcji w innych przeglądarkach</string>
     <string name="feedbackSubCategoryDuckAiOther">Inne opinie o Duck.ai</string>
 
-    <string name="subscriptionSettingSectionTitle" translatable="false">DuckDuckGo Subscription</string>
+    <string name="subscriptionSettingSectionTitle">Subskrypcja DuckDuckGo</string>
     <string name="subscriptionSettingSubscribeSecure">Zabezpiecz Wi-Fi i czatuj prywatnie z zaawansowanymi modelami AI</string>
 
     <string name="feedbackGeneralSubscription">Subskrypcja</string>
+
+    <!-- Pro tier changes -->
+    <string name="feedbackSubCategorySubsUnableToAccessProFeatures">Brak dostępu do funkcji poziomu Plus lub Pro</string>
+    <string name="subscriptionsProUpgradeTitle">Przejdź na poziom Pro</string>
+    <string name="subscriptionsProUpgradeMessage">Odblokuj bardziej wydajną sztuczną inteligencję</string>
+    <string name="subscriptionSettingSectionManageSubscription">Zarządzaj subskrypcją</string>
+    <string name="subscriptionSettingViewAllPlans">Zobacz wszystkie plany</string>
+    <string name="subscriptionSettingManagePaymentOrCancel">Zarządzaj płatnością lub anuluj</string>
+
+    <!-- Pending plan changes -->
+    <string name="subscriptionPendingPlanChangeDowngradePanel" instruction="First placeholder is the Tier name (e.g. Plus, Pro), second is date in short format (month day)">W dniu %2$s Twój plan zostanie obniżony do poziomu %1$s.</string>
+    <string name="subscriptionPendingPlanChangeUpgrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">Twój plan zostanie zaktualizowany do %1$s w dniu %2$s.</string>
+    <string name="subscriptionPendingPlanChangeDowngrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">W dniu %2$s Twój plan zostanie obniżony do poziomu %1$s.</string>
+    <string name="planNamePlusMonthly">Plus Miesięczny</string>
+    <string name="planNamePlusYearly">Plus roczny</string>
+    <string name="planNameProMonthly">Pro miesięczny</string>
+    <string name="planNameProYearly">Pro roczny</string>
+    <string name="tierPlusName" translatable="false">PLUS</string>
+    <string name="tierProName" translatable="false">PRO</string>
+
+    <!-- Content Descriptions -->
+    <string name="subscriptionExpiredStatusIconContentDescription">Subskrypcja wygasła</string>
+    <string name="subscriptionActiveStatusIconContentDescription">Subskrypcja aktywna</string>
 
 </resources>

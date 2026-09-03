@@ -16,29 +16,33 @@
 
 package com.duckduckgo.app.onboarding.ui
 
-import com.duckduckgo.app.onboarding.ui.page.BbWelcomePage
-import com.duckduckgo.app.onboarding.ui.page.BuckWelcomePage
+import com.duckduckgo.app.onboarding.ui.page.BrandDesignUpdateDefaultBrowserPage
+import com.duckduckgo.app.onboarding.ui.page.BrandDesignUpdateWelcomePage
 import com.duckduckgo.app.onboarding.ui.page.DefaultBrowserPage
 import com.duckduckgo.app.onboarding.ui.page.WelcomePage
+import com.duckduckgo.app.onboarding.ui.page.configdriven.ConfigDrivenWelcomePageFragment
 
 interface OnboardingPageBuilder {
     fun buildWelcomePage(): WelcomePage
-    fun buildBuckWelcomePage(): BuckWelcomePage
-    fun buildBbWelcomePage(): BbWelcomePage
+    fun buildBrandDesignUpdateWelcomePage(): BrandDesignUpdateWelcomePage
+    fun buildConfigDrivenWelcomePage(): ConfigDrivenWelcomePageFragment
     fun buildDefaultBrowserPage(): DefaultBrowserPage
+    fun buildBrandDesignUpdateDefaultBrowserPage(): BrandDesignUpdateDefaultBrowserPage
 
     sealed class OnboardingPageBlueprint {
         data object DefaultBrowserBlueprint : OnboardingPageBlueprint()
         data object WelcomePageBlueprint : OnboardingPageBlueprint()
-        data object BuckWelcomePageBlueprint : OnboardingPageBlueprint()
-        data object BbWelcomePageBlueprint : OnboardingPageBlueprint()
+        data object BrandDesignUpdateWelcomePageBlueprint : OnboardingPageBlueprint()
+        data object ConfigDrivenWelcomePageBlueprint : OnboardingPageBlueprint()
+        data object BrandDesignUpdateDefaultBrowserPageBlueprint : OnboardingPageBlueprint()
     }
 }
 
 class OnboardingFragmentPageBuilder : OnboardingPageBuilder {
 
     override fun buildWelcomePage() = WelcomePage()
-    override fun buildBuckWelcomePage() = BuckWelcomePage()
-    override fun buildBbWelcomePage() = BbWelcomePage()
+    override fun buildBrandDesignUpdateWelcomePage() = BrandDesignUpdateWelcomePage()
+    override fun buildConfigDrivenWelcomePage() = ConfigDrivenWelcomePageFragment()
     override fun buildDefaultBrowserPage() = DefaultBrowserPage()
+    override fun buildBrandDesignUpdateDefaultBrowserPage() = BrandDesignUpdateDefaultBrowserPage()
 }

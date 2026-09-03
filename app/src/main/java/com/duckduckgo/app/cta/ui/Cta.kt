@@ -16,36 +16,50 @@
 
 package com.duckduckgo.app.cta.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.Context
+import android.content.res.ColorStateList
+import android.content.res.Configuration
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewPropertyAnimator
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.annotation.VisibleForTesting
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnPreDraw
+import androidx.core.view.isGone
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
-import androidx.core.view.updatePadding
+import androidx.core.widget.ImageViewCompat
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.transition.AutoTransition
 import androidx.transition.TransitionManager
+import com.airbnb.lottie.LottieAnimationView
 import com.duckduckgo.app.browser.R
 import com.duckduckgo.app.browser.databinding.FragmentBrowserTabBinding
-import com.duckduckgo.app.browser.databinding.IncludeOnboardingBubbleBbDialogBinding
-import com.duckduckgo.app.browser.databinding.IncludeOnboardingBubbleBuckDialogBinding
-import com.duckduckgo.app.browser.databinding.IncludeOnboardingInContextBuckDialogBinding
+import com.duckduckgo.app.browser.omnibar.OmnibarType
 import com.duckduckgo.app.cta.model.CtaId
 import com.duckduckgo.app.cta.ui.DaxBubbleCta.DaxDialogIntroOption
 import com.duckduckgo.app.cta.ui.DaxCta.Companion.MAX_DAYS_ALLOWED
 import com.duckduckgo.app.global.install.AppInstallStore
 import com.duckduckgo.app.global.install.daysInstalled
 import com.duckduckgo.app.onboarding.store.OnboardingStore
-import com.duckduckgo.app.onboardingdesignexperiment.OnboardingDesignExperimentManager
+import com.duckduckgo.app.onboarding.ui.view.DaxTypeAnimationTextView
+import com.duckduckgo.app.onboarding.ui.view.OnboardingFillImageView
+import com.duckduckgo.app.onboarding.ui.view.TouchInterceptingLinearLayout
 import com.duckduckgo.app.pixels.AppPixelName
 import com.duckduckgo.app.pixels.AppPixelName.SITE_NOT_WORKING_SHOWN
 import com.duckduckgo.app.pixels.AppPixelName.SITE_NOT_WORKING_WEBSITE_BROKEN
@@ -53,21 +67,25 @@ import com.duckduckgo.app.settings.db.SettingsDataStore
 import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.app.statistics.pixels.Pixel.PixelValues.DAX_FIRE_DIALOG_CTA
 import com.duckduckgo.app.trackerdetection.model.Entity
-import com.duckduckgo.browser.ui.omnibar.OmnibarType
 import com.duckduckgo.common.ui.view.TypeAnimationTextView
 import com.duckduckgo.common.ui.view.button.DaxButton
+import com.duckduckgo.common.ui.view.getColorFromAttr
 import com.duckduckgo.common.ui.view.gone
+import com.duckduckgo.common.ui.view.shape.DaxOnboardingBubbleBrandDesignUpdateCardView
 import com.duckduckgo.common.ui.view.show
 import com.duckduckgo.common.ui.view.text.DaxTextView
 import com.duckduckgo.common.ui.view.toPx
 import com.duckduckgo.common.utils.baseHost
+import com.duckduckgo.common.utils.device.DeviceInfo
+import com.duckduckgo.common.utils.device.isTablet
 import com.duckduckgo.common.utils.extensions.html
+import com.duckduckgo.common.utils.extensions.preventWidows
 import com.google.android.material.button.MaterialButton
 import kotlin.collections.forEachIndexed
 import kotlin.collections.toMutableList
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
-import com.duckduckgo.mobile.android.R as CommonR
+import com.duckduckgo.mobile.android.R as DesignSystemR
 
 interface ViewCta {
     fun showCta(
@@ -100,6 +118,8 @@ interface Cta {
     fun pixelCancelParameters(): Map<String, String>
 
     fun pixelOkParameters(): Map<String, String>
+
+    fun shouldDropAddressBarFocusWhenShown(): Boolean = false
 }
 
 interface OnboardingDaxCta {
@@ -129,8 +149,6 @@ sealed class OnboardingDaxDialogCta(
 ) : Cta,
     DaxCta,
     OnboardingDaxCta {
-    private val leadingIconFadeIn: Duration = 100.milliseconds
-
     override fun pixelCancelParameters(): Map<String, String> = mapOf(Pixel.PixelParameter.CTA_SHOWN to ctaPixelParam)
 
     override fun pixelOkParameters(): Map<String, String> = mapOf(Pixel.PixelParameter.CTA_SHOWN to ctaPixelParam)
@@ -139,19 +157,6 @@ sealed class OnboardingDaxDialogCta(
 
     override fun hideOnboardingCta(binding: FragmentBrowserTabBinding) {
         binding.includeOnboardingInContextDaxDialog.root.gone()
-    }
-
-    fun hideBuckOnboardingCta(binding: FragmentBrowserTabBinding) {
-        with(binding.includeOnboardingInContextBuckDialog) {
-            root.gone()
-            onboardingDaxDialogContainer.gone()
-            onboardingDialogContent.gone()
-            onboardingDialogSuggestionsContent.gone()
-        }
-    }
-
-    fun hideBBOnboardingCta(binding: FragmentBrowserTabBinding) {
-        binding.includeOnboardingInContextBBDialog.root.gone()
     }
 
     internal fun setOnboardingDialogView(
@@ -163,7 +168,7 @@ sealed class OnboardingDaxDialogCta(
         onPrimaryCtaClicked: () -> Unit,
         onSecondaryCtaClicked: () -> Unit,
         onTypingAnimationFinished: () -> Unit = {},
-        onDismissCtaClicked: () -> Unit,
+        onDismissCtaClicked: (() -> Unit)?,
     ) {
         val daxDialog = binding.includeOnboardingInContextDaxDialog
 
@@ -189,6 +194,7 @@ sealed class OnboardingDaxDialogCta(
         daxDialog.onboardingDialogSuggestionsContent.gone()
         daxDialog.onboardingDialogContent.show()
         daxDialog.root.alpha = MAX_ALPHA
+        daxDialog.daxDialogDismissButton.isVisible = onDismissCtaClicked != null
         TransitionManager.beginDelayedTransition(daxDialog.cardView, AutoTransition())
         val afterAnimation = {
             daxDialog.dialogTextCta.finishAnimation()
@@ -206,7 +212,7 @@ sealed class OnboardingDaxDialogCta(
             }
             binding.includeOnboardingInContextDaxDialog.primaryCta.setOnClickListener { onPrimaryCtaClicked.invoke() }
             binding.includeOnboardingInContextDaxDialog.secondaryCta.setOnClickListener { onSecondaryCtaClicked.invoke() }
-            binding.includeOnboardingInContextDaxDialog.daxDialogDismissButton.setOnClickListener { onDismissCtaClicked.invoke() }
+            daxDialog.daxDialogDismissButton.setOnClickListener(onDismissCtaClicked?.let { { it() } })
             onTypingAnimationFinished.invoke()
         }
         daxDialog.dialogTextCta.startTypingAnimation(daxText, true) { afterAnimation() }
@@ -215,188 +221,9 @@ sealed class OnboardingDaxDialogCta(
         daxDialog.onboardingDialogSuggestionsContent.setOnClickListener { afterAnimation() }
     }
 
-    internal fun setBuckOnboardingDialogView(
-        title: String? = null,
-        message: String,
-        primaryCtaText: String?,
-        binding: FragmentBrowserTabBinding,
-        onPrimaryCtaClicked: () -> Unit,
-        onTypingAnimationFinished: () -> Unit = {},
-        onDismissCtaClicked: () -> Unit,
-    ) {
-        val binding = binding.includeOnboardingInContextBuckDialog
-
-        with(binding) {
-            root.show()
-            primaryCta.setOnClickListener(null)
-
-            val parsedMessage = message.html(binding.root.context)
-            dialogTextCta.text = ""
-            hiddenTextCta.text = parsedMessage
-
-            title?.let {
-                with(onboardingDialogTitle) {
-                    show()
-                    text = title
-                }
-            } ?: onboardingDialogTitle.gone()
-
-            primaryCtaText?.let {
-                with(primaryCta) {
-                    alpha = MIN_ALPHA
-                    show()
-                    text = primaryCtaText
-                }
-            } ?: primaryCta.gone()
-
-            root.alpha = MAX_ALPHA
-
-            val afterAnimation = {
-                dialogTextCta.finishAnimation()
-                primaryCtaText?.let { primaryCta.animate().alpha(MAX_ALPHA).duration = DAX_DIALOG_APPEARANCE_ANIMATION }
-                primaryCta.setOnClickListener { onPrimaryCtaClicked.invoke() }
-                daxDialogDismissButton.setOnClickListener { onDismissCtaClicked.invoke() }
-                onTypingAnimationFinished()
-            }
-
-            fun setSkipTypingAnimationClickListeners() {
-                buckOnboardingDialogView.setOnClickListener { afterAnimation() }
-                onboardingDaxDialogContainer.setOnClickListener { afterAnimation() }
-                onboardingDialogContent.setOnClickListener { afterAnimation() }
-                dialogTextCta.setOnClickListener { afterAnimation() }
-            }
-
-            if (onboardingDaxDialogContainer.isVisible &&
-                (onboardingDialogContent.isVisible || onboardingDialogSuggestionsContent.isVisible)
-            ) {
-                onboardingDialogContent.gone()
-                onboardingDialogSuggestionsContent.gone()
-                TransitionManager.beginDelayedTransition(buckOnboardingDialogView, AutoTransition())
-                onboardingDialogContent.show()
-                dialogTextCta.startTypingAnimation(message, true) {
-                    afterAnimation()
-                }
-                setSkipTypingAnimationClickListeners()
-            } else {
-                onboardingDialogSuggestionsContent.gone()
-                onboardingDaxDialogContainer.show()
-                onboardingDialogContent.show()
-                animateBuckOnboardingDialogEntrance(
-                    onAnimationEnd = {
-                        setSkipTypingAnimationClickListeners()
-                        dialogTextCta.startTypingAnimation(message, true) {
-                            afterAnimation()
-                        }
-                    },
-                )
-            }
-        }
-    }
-
-    internal fun setBBOnboardingDialogView(
-        title: String? = null,
-        @DrawableRes leadingDescriptionIconRes: Int? = null,
-        description: String,
-        primaryCtaText: String?,
-        binding: FragmentBrowserTabBinding,
-        onPrimaryCtaClicked: () -> Unit,
-        onTypingAnimationFinished: () -> Unit = {},
-        onDismissCtaClicked: () -> Unit,
-    ) {
-        val binding = binding.includeOnboardingInContextBBDialog
-        val context = binding.root.context
-
-        with(binding) {
-            val isContinuousDialog = onboardingDialogContent.isVisible || onboardingDialogSuggestionsContent.isVisible
-            root.show()
-            primaryCta.setOnClickListener(null)
-
-            val parsedDescription = description.html(binding.root.context)
-            dialogTextCta.text = ""
-            hiddenTextCta.text = parsedDescription
-
-            title?.let {
-                val parsedTitle = title.html(binding.root.context)
-                onboardingDialogTitle.text = ""
-                hiddenOnboardingDialogTitle.text = parsedTitle
-                dialogTextCta.setTextColor(context.getColor(CommonR.color.bbColorSecondaryText))
-            } ?: run {
-                dialogTextCta.setTextColor(context.getColor(CommonR.color.bbColorPrimaryText))
-            }
-
-            leadingDescriptionIconRes?.let { leadingDescriptionIconRes ->
-                with(leadingDescriptionIcon) {
-                    setImageResource(leadingDescriptionIconRes)
-                    isInvisible = true
-                }
-            } ?: leadingDescriptionIcon.gone()
-
-            primaryCtaText?.let {
-                with(primaryCta) {
-                    alpha = MIN_ALPHA
-                    text = primaryCtaText
-                }
-            } ?: primaryCta.gone()
-
-            onboardingDialogSuggestionsContent.gone()
-            onboardingDialogContent.show()
-            root.alpha = MAX_ALPHA
-
-            title?.let {
-                onboardingDialogTitleContainer.show()
-            } ?: onboardingDialogTitleContainer.gone()
-
-            primaryCtaText?.let {
-                primaryCta.show()
-            }
-
-            leadingDescriptionIconRes?.let {
-                leadingDescriptionIcon.show()
-            }
-
-            if (isContinuousDialog) {
-                TransitionManager.beginDelayedTransition(cardView, AutoTransition())
-            }
-
-            val afterAnimation = {
-                onboardingDialogTitle.finishAnimation()
-                dialogTextCta.finishAnimation()
-                primaryCtaText?.let { primaryCta.animate().alpha(MAX_ALPHA).duration = DAX_DIALOG_APPEARANCE_ANIMATION }
-                primaryCta.setOnClickListener { onPrimaryCtaClicked.invoke() }
-                daxDialogDismissButton.setOnClickListener { onDismissCtaClicked.invoke() }
-                onTypingAnimationFinished.invoke()
-            }
-
-            fun bodyTypingAnimation() = dialogTextCta.startTypingAnimation(description, true) { afterAnimation() }
-
-            fun runBodyAnimations() =
-                leadingDescriptionIconRes
-                    ?.let {
-                        leadingDescriptionIcon.fadeIn(leadingIconFadeIn)
-                    }?.withEndAction {
-                        bodyTypingAnimation()
-                    } ?: run {
-                    bodyTypingAnimation()
-                }
-
-            fun runTitleTypingAnimation() = onboardingDialogTitle.startTypingAnimation(title ?: "", true) { runBodyAnimations() }
-
-            if (title != null) {
-                runTitleTypingAnimation()
-            } else {
-                runBodyAnimations()
-            }
-
-            onboardingDaxDialogBackground.setOnClickListener { afterAnimation() }
-            onboardingDialogContent.setOnClickListener { afterAnimation() }
-            onboardingDialogSuggestionsContent.setOnClickListener { afterAnimation() }
-        }
-    }
-
     class DaxSerpCta(
         override val onboardingStore: OnboardingStore,
         override val appInstallStore: AppInstallStore,
-        private val onboardingDesignExperimentManager: OnboardingDesignExperimentManager,
     ) : OnboardingDaxDialogCta(
         CtaId.DAX_DIALOG_SERP,
         R.string.onboardingSerpDaxDialogDescription,
@@ -419,37 +246,15 @@ sealed class OnboardingDaxDialogCta(
         ) {
             val context = binding.root.context
 
-            when {
-                onboardingDesignExperimentManager.isBuckEnrolledAndEnabled() -> {
-                    setBuckOnboardingDialogView(
-                        message = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-                onboardingDesignExperimentManager.isBbEnrolledAndEnabled() -> {
-                    setBBOnboardingDialogView(
-                        description = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-                else -> {
-                    setOnboardingDialogView(
-                        daxText = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onSecondaryCtaClicked = onSecondaryCtaClicked,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-            }
+            setOnboardingDialogView(
+                daxText = description?.let { context.getString(it) }.orEmpty(),
+                primaryCtaText = buttonText?.let { context.getString(it) },
+                binding = binding,
+                onPrimaryCtaClicked = onPrimaryCtaClicked,
+                onSecondaryCtaClicked = onSecondaryCtaClicked,
+                onTypingAnimationFinished = onTypingAnimationFinished,
+                onDismissCtaClicked = onDismissCtaClicked,
+            )
         }
     }
 
@@ -458,7 +263,6 @@ sealed class OnboardingDaxDialogCta(
         override val appInstallStore: AppInstallStore,
         val trackers: List<Entity>,
         val settingsDataStore: SettingsDataStore,
-        private val onboardingDesignExperimentManager: OnboardingDesignExperimentManager,
     ) : OnboardingDaxDialogCta(
         CtaId.DAX_DIALOG_TRACKERS_FOUND,
         null,
@@ -475,49 +279,21 @@ sealed class OnboardingDaxDialogCta(
             binding: FragmentBrowserTabBinding,
             onPrimaryCtaClicked: () -> Unit,
             onSecondaryCtaClicked: () -> Unit,
-            onTypingAnimationFinished: () -> Unit, // TODO should be renamed to onAnimationEnd if buck wins
+            onTypingAnimationFinished: () -> Unit,
             onSuggestedOptionClicked: ((DaxDialogIntroOption) -> Unit)?,
             onDismissCtaClicked: () -> Unit,
         ) {
             val context = binding.root.context
 
-            when {
-                onboardingDesignExperimentManager.isBuckEnrolledAndEnabled() -> {
-                    setBuckOnboardingDialogView(
-                        message = getTrackersDescription(context, trackers),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-
-                onboardingDesignExperimentManager.isBbEnrolledAndEnabled() -> {
-                    setBBOnboardingDialogView(
-                        title = getTrackersDescription(context, trackers),
-                        description = context
-                            .getString(R.string.bbOnboardingTrackersBlockedDialogDescription)
-                            .getStringForOmnibarPosition(settingsDataStore.omnibarType),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-                else -> {
-                    setOnboardingDialogView(
-                        daxText = getTrackersDescription(context, trackers),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onSecondaryCtaClicked = onSecondaryCtaClicked,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-            }
+            setOnboardingDialogView(
+                daxText = getTrackersDescription(context, trackers),
+                primaryCtaText = buttonText?.let { context.getString(it) },
+                binding = binding,
+                onPrimaryCtaClicked = onPrimaryCtaClicked,
+                onSecondaryCtaClicked = onSecondaryCtaClicked,
+                onTypingAnimationFinished = onTypingAnimationFinished,
+                onDismissCtaClicked = onDismissCtaClicked,
+            )
         }
 
         @VisibleForTesting
@@ -535,31 +311,15 @@ sealed class OnboardingDaxDialogCta(
             val size = trackers.size - trackersFiltered.size
             val quantityString =
                 if (size == 0) {
-                    if (onboardingDesignExperimentManager.isBbEnrolledAndEnabled()) {
-                        context.resources
-                            .getQuantityString(R.plurals.bbOnboardingTrackersBlockedZeroDialogTitle, trackersFiltered.size)
-                            .getStringForOmnibarPosition(settingsDataStore.omnibarType)
-                    } else {
-                        context.resources
-                            .getQuantityString(R.plurals.onboardingTrackersBlockedZeroDialogDescription, trackersFiltered.size)
-                            .getStringForOmnibarPosition(settingsDataStore.omnibarType)
-                    }
+                    context.resources
+                        .getQuantityString(R.plurals.onboardingTrackersBlockedZeroDialogDescription, trackersFiltered.size)
+                        .getStringForOmnibarPosition(settingsDataStore.omnibarType)
                 } else {
-                    if (onboardingDesignExperimentManager.isBbEnrolledAndEnabled()) {
-                        context.resources
-                            .getQuantityString(R.plurals.bbOnboardingTrackersBlockedDialogTitle, size, size)
-                            .getStringForOmnibarPosition(settingsDataStore.omnibarType)
-                    } else {
-                        context.resources
-                            .getQuantityString(R.plurals.onboardingTrackersBlockedDialogDescription, size, size)
-                            .getStringForOmnibarPosition(settingsDataStore.omnibarType)
-                    }
+                    context.resources
+                        .getQuantityString(R.plurals.onboardingTrackersBlockedDialogDescription, size, size)
+                        .getStringForOmnibarPosition(settingsDataStore.omnibarType)
                 }
-            return if (onboardingDesignExperimentManager.isBbEnrolledAndEnabled()) {
-                "$trackersText$quantityString"
-            } else {
-                "<b>$trackersText</b>$quantityString"
-            }
+            return "<b>$trackersText</b>$quantityString"
         }
     }
 
@@ -568,7 +328,6 @@ sealed class OnboardingDaxDialogCta(
         override val appInstallStore: AppInstallStore,
         val network: String,
         private val siteHost: String,
-        private val onboardingDesignExperimentManager: OnboardingDesignExperimentManager,
     ) : OnboardingDaxDialogCta(
         CtaId.DAX_DIALOG_NETWORK,
         null,
@@ -591,37 +350,15 @@ sealed class OnboardingDaxDialogCta(
         ) {
             val context = binding.root.context
 
-            when {
-                onboardingDesignExperimentManager.isBuckEnrolledAndEnabled() -> {
-                    setBuckOnboardingDialogView(
-                        message = getTrackersDescription(context),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-                onboardingDesignExperimentManager.isBbEnrolledAndEnabled() -> {
-                    setBBOnboardingDialogView(
-                        description = getTrackersDescription(context),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-                else -> {
-                    setOnboardingDialogView(
-                        daxText = getTrackersDescription(context),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onSecondaryCtaClicked = onSecondaryCtaClicked,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-            }
+            setOnboardingDialogView(
+                daxText = getTrackersDescription(context),
+                primaryCtaText = buttonText?.let { context.getString(it) },
+                binding = binding,
+                onPrimaryCtaClicked = onPrimaryCtaClicked,
+                onSecondaryCtaClicked = onSecondaryCtaClicked,
+                onTypingAnimationFinished = onTypingAnimationFinished,
+                onDismissCtaClicked = onDismissCtaClicked,
+            )
         }
 
         @VisibleForTesting
@@ -648,7 +385,6 @@ sealed class OnboardingDaxDialogCta(
     class DaxNoTrackersCta(
         override val onboardingStore: OnboardingStore,
         override val appInstallStore: AppInstallStore,
-        private val onboardingDesignExperimentManager: OnboardingDesignExperimentManager,
     ) : OnboardingDaxDialogCta(
         CtaId.DAX_DIALOG_OTHER,
         R.string.daxNonSerpCtaText,
@@ -671,44 +407,21 @@ sealed class OnboardingDaxDialogCta(
         ) {
             val context = binding.root.context
 
-            when {
-                onboardingDesignExperimentManager.isBuckEnrolledAndEnabled() -> {
-                    setBuckOnboardingDialogView(
-                        message = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-                onboardingDesignExperimentManager.isBbEnrolledAndEnabled() -> {
-                    setBBOnboardingDialogView(
-                        description = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-                else -> {
-                    setOnboardingDialogView(
-                        daxText = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onSecondaryCtaClicked = onSecondaryCtaClicked,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-            }
+            setOnboardingDialogView(
+                daxText = description?.let { context.getString(it) }.orEmpty(),
+                primaryCtaText = buttonText?.let { context.getString(it) },
+                binding = binding,
+                onPrimaryCtaClicked = onPrimaryCtaClicked,
+                onSecondaryCtaClicked = onSecondaryCtaClicked,
+                onTypingAnimationFinished = onTypingAnimationFinished,
+                onDismissCtaClicked = onDismissCtaClicked,
+            )
         }
     }
 
     class DaxFireButtonCta(
         override val onboardingStore: OnboardingStore,
         override val appInstallStore: AppInstallStore,
-        private val onboardingDesignExperimentManager: OnboardingDesignExperimentManager,
     ) : OnboardingDaxDialogCta(
         CtaId.DAX_FIRE_BUTTON,
         R.string.onboardingFireButtonDaxDialogDescription,
@@ -731,46 +444,21 @@ sealed class OnboardingDaxDialogCta(
         ) {
             val context = binding.root.context
 
-            when {
-                onboardingDesignExperimentManager.isBuckEnrolledAndEnabled() -> {
-                    setBuckOnboardingDialogView(
-                        message = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = context.getString(R.string.onboardingFireButtonDaxDialogOkButton),
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-                onboardingDesignExperimentManager.isBbEnrolledAndEnabled() -> {
-                    setBBOnboardingDialogView(
-                        title = context.getString(R.string.bbOnboardingFireButtonDaxDialogTitle),
-                        leadingDescriptionIconRes = CommonR.drawable.ic_fire_24,
-                        description = context.getString(R.string.bbOnboardingFireButtonDaxDialogDescription),
-                        primaryCtaText = context.getString(R.string.onboardingFireButtonDaxDialogOkButton),
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-                else -> {
-                    setOnboardingDialogView(
-                        daxText = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = context.getString(R.string.onboardingFireButtonDaxDialogOkButton),
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onSecondaryCtaClicked = onSecondaryCtaClicked,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-            }
+            setOnboardingDialogView(
+                daxText = description?.let { context.getString(it) }.orEmpty(),
+                primaryCtaText = context.getString(R.string.onboardingFireButtonDaxDialogOkButton),
+                binding = binding,
+                onPrimaryCtaClicked = onPrimaryCtaClicked,
+                onSecondaryCtaClicked = onSecondaryCtaClicked,
+                onTypingAnimationFinished = onTypingAnimationFinished,
+                onDismissCtaClicked = onDismissCtaClicked,
+            )
         }
     }
 
     class DaxSiteSuggestionsCta(
         override val onboardingStore: OnboardingStore,
         override val appInstallStore: AppInstallStore,
-        private val onboardingDesignExperimentManager: OnboardingDesignExperimentManager,
         private val onSiteSuggestionOptionClicked: (index: Int) -> Unit, // used to fire experiment pixel
     ) : OnboardingDaxDialogCta(
         CtaId.DAX_INTRO_VISIT_SITE,
@@ -792,274 +480,43 @@ sealed class OnboardingDaxDialogCta(
             onSuggestedOptionClicked: ((DaxDialogIntroOption) -> Unit)?,
             onDismissCtaClicked: () -> Unit,
         ) {
-            when {
-                onboardingDesignExperimentManager.isBuckEnrolledAndEnabled() -> {
-                    showBuckOnboardingCta(
-                        binding = binding,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onSuggestedOptionClicked = { option, index ->
-                            onSuggestedOptionClicked?.invoke(option)
-                            onSiteSuggestionOptionClicked.invoke(index)
-                        },
-                    )
-                }
-                onboardingDesignExperimentManager.isBbEnrolledAndEnabled() -> {
-                    showBBOnboardingCta(
-                        binding = binding,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onSuggestedOptionClicked = { option, index ->
-                            onSuggestedOptionClicked?.invoke(option)
-                            onSiteSuggestionOptionClicked.invoke(index)
-                            with(binding.includeOnboardingInContextBBDialog) {
-                                dialogTextCta.text = ""
-                                hiddenTextCta.text = ""
-                                onboardingDialogContent.gone()
-                                onboardingDialogSuggestionsContent.gone()
-                            }
-                        },
-                    )
-                }
-                else -> {
-                    val context = binding.root.context
-                    val daxDialog = binding.includeOnboardingInContextDaxDialog
-                    val daxText = description?.let { context.getString(it) }.orEmpty()
-
-                    binding.includeOnboardingInContextDaxDialog.onboardingDialogContent.gone()
-                    binding.includeOnboardingInContextDaxDialog.onboardingDialogSuggestionsContent.show()
-                    daxDialog.suggestionsDialogTextCta.text = ""
-                    daxDialog.suggestionsHiddenTextCta.text = daxText.html(context)
-
-                    val isModifiedControlExperimentEnabled = onboardingDesignExperimentManager.isModifiedControlEnrolledAndEnabled()
-
-                    if (isModifiedControlExperimentEnabled) {
-                        daxDialog.daxDialogOption4.gone()
-                    }
-
-                    TransitionManager.beginDelayedTransition(binding.includeOnboardingInContextDaxDialog.cardView, AutoTransition())
-                    val afterAnimation = {
-                        onTypingAnimationFinished()
-
-                        if (isModifiedControlExperimentEnabled) {
-                            val optionsViews =
-                                listOf<DaxButton>(
-                                    daxDialog.daxDialogOption1,
-                                    daxDialog.daxDialogOption2,
-                                    daxDialog.daxDialogOption3,
-                                )
-
-                            // modifiedControl has 3 options to match experiment variants
-                            val modifiedControlOptions =
-                                onboardingStore
-                                    .getSitesOptions()
-                                    .toMutableList()
-                                    .apply {
-                                        removeAt(1) // Remove the regional news option
-                                    }.toList()
-
-                            optionsViews.forEachIndexed { index, buttonView ->
-                                val modifiedControlOption = modifiedControlOptions[index]
-
-                                with(buttonView) {
-                                    modifiedControlOption.setOptionView(this)
-                                    setOnClickListener {
-                                        onSuggestedOptionClicked?.invoke(modifiedControlOption)
-                                        onSiteSuggestionOptionClicked.invoke(index)
-                                    }
-                                    animate().alpha(MAX_ALPHA).duration = DAX_DIALOG_APPEARANCE_ANIMATION
-                                }
-                            }
-                        } else {
-                            val optionsViews =
-                                listOf<DaxButton>(
-                                    daxDialog.daxDialogOption1,
-                                    daxDialog.daxDialogOption2,
-                                    daxDialog.daxDialogOption3,
-                                    daxDialog.daxDialogOption4,
-                                )
-
-                            optionsViews.forEachIndexed { index, buttonView ->
-                                val options = onboardingStore.getSitesOptions()
-                                options[index].setOptionView(buttonView)
-                                buttonView.animate().alpha(MAX_ALPHA).duration = DAX_DIALOG_APPEARANCE_ANIMATION
-                            }
-                            val options = onboardingStore.getSitesOptions()
-                            daxDialog.daxDialogOption1.setOnClickListener { onSuggestedOptionClicked?.invoke(options[0]) }
-                            daxDialog.daxDialogOption2.setOnClickListener { onSuggestedOptionClicked?.invoke(options[1]) }
-                            daxDialog.daxDialogOption3.setOnClickListener { onSuggestedOptionClicked?.invoke(options[2]) }
-                            daxDialog.daxDialogOption4.setOnClickListener { onSuggestedOptionClicked?.invoke(options[3]) }
-                        }
-                    }
-
-                    daxDialog.suggestionsDialogTextCta.startTypingAnimation(daxText, true) { afterAnimation() }
-                    daxDialog.onboardingDialogContent.setOnClickListener {
-                        daxDialog.dialogTextCta.finishAnimation()
-                        afterAnimation()
-                    }
-                }
-            }
-        }
-
-        private fun showBuckOnboardingCta(
-            binding: FragmentBrowserTabBinding,
-            onTypingAnimationFinished: () -> Unit,
-            onSuggestedOptionClicked: ((DaxDialogIntroOption, index: Int) -> Unit)?,
-        ) {
             val context = binding.root.context
-            val buckDialogBinding = binding.includeOnboardingInContextBuckDialog
-
-            with(buckDialogBinding) {
-                root.show()
-                val message = description?.let { context.getString(it) }.orEmpty()
-                val parsedDaxText = message.html(context)
-
-                suggestionsDialogTextCta.text = ""
-                suggestionsHiddenTextCta.text = parsedDaxText
-
-                val afterAnimation = {
-                    onTypingAnimationFinished()
-                    val optionsViews =
-                        listOf(
-                            daxDialogOption1,
-                            daxDialogOption2,
-                            daxDialogOption3,
-                        )
-
-                    // Buck dialog has a max of 3 options and if successful we'll only have 3 options and can remove this
-                    val options =
-                        onboardingStore
-                            .getSitesOptions()
-                            .toMutableList()
-                            .apply {
-                                removeAt(1) // Remove the regional news option
-                            }
-
-                    optionsViews.forEachIndexed { index, buttonView ->
-                        options[index].setOptionView(buttonView)
-                        buttonView
-                            .animate()
-                            .alpha(MAX_ALPHA)
-                            .setDuration(DAX_DIALOG_APPEARANCE_ANIMATION)
-                            .withEndAction {
-                                buttonView.setOnClickListener {
-                                    onSuggestedOptionClicked?.invoke(options[index], index)
-                                    wingAnimation.gone()
-                                }
-                            }
-                    }
-
-                    showAndPlayWingAnimation()
-                }
-
-                fun setSkipTypingAnimationClickListeners() {
-                    buckOnboardingDialogView.setOnClickListener { afterAnimation }
-                    onboardingDaxDialogContainer.setOnClickListener { afterAnimation() }
-                    onboardingDialogContent.setOnClickListener { afterAnimation() }
-                    dialogTextCta.setOnClickListener { afterAnimation() }
-                }
-
-                if (onboardingDaxDialogContainer.isVisible &&
-                    (onboardingDialogContent.isVisible || onboardingDialogSuggestionsContent.isVisible)
-                ) {
-                    onboardingDialogContent.gone()
-                    onboardingDialogSuggestionsContent.show()
-                    wingAnimation.isInvisible = true
-                    TransitionManager.beginDelayedTransition(buckOnboardingDialogView, AutoTransition())
-                    suggestionsDialogTextCta.startTypingAnimation(message, true) { afterAnimation() }
-                    setSkipTypingAnimationClickListeners()
-                } else {
-                    onboardingDaxDialogContainer.show()
-                    onboardingDialogSuggestionsContent.show()
-                    animateBuckOnboardingDialogEntrance(
-                        onAnimationEnd = {
-                            suggestionsDialogTextCta.startTypingAnimation(message, true) { afterAnimation() }
-                            setSkipTypingAnimationClickListeners()
-                        },
-                    )
-                }
-            }
-        }
-
-        private fun IncludeOnboardingInContextBuckDialogBinding.showAndPlayWingAnimation() {
-            with(wingAnimation) {
-                setMaxProgress(0.8f)
-                show()
-                playAnimation()
-            }
-        }
-
-        private fun showBBOnboardingCta(
-            binding: FragmentBrowserTabBinding,
-            onTypingAnimationFinished: () -> Unit,
-            onSuggestedOptionClicked: ((DaxDialogIntroOption, index: Int) -> Unit)?,
-        ) {
-            val binding = binding.includeOnboardingInContextBBDialog
-            val context = binding.root.context
-
+            val daxDialog = binding.includeOnboardingInContextDaxDialog
             val daxText = description?.let { context.getString(it) }.orEmpty()
 
-            with(binding) {
-                onboardingDialogContent.gone()
-                onboardingDialogTitleContainer.gone()
+            binding.includeOnboardingInContextDaxDialog.onboardingDialogContent.gone()
+            binding.includeOnboardingInContextDaxDialog.onboardingDialogSuggestionsContent.show()
+            daxDialog.suggestionsDialogTextCta.text = ""
+            daxDialog.suggestionsHiddenTextCta.text = daxText.html(context)
 
-                TransitionManager.beginDelayedTransition(cardView, AutoTransition())
+            TransitionManager.beginDelayedTransition(binding.includeOnboardingInContextDaxDialog.cardView, AutoTransition())
+            val afterAnimation = {
+                onTypingAnimationFinished()
 
-                val title = context.getString(R.string.onboardingSitesSuggestionsDaxDialogTitle)
-                onboardingDialogSuggestionsTitle.text = ""
-                hiddenOnboardingDialogSuggestionsTitle.text = title
+                val optionsViews =
+                    listOf<DaxButton>(
+                        daxDialog.daxDialogOption1,
+                        daxDialog.daxDialogOption2,
+                        daxDialog.daxDialogOption3,
+                        daxDialog.daxDialogOption4,
+                    )
 
-                suggestionsDialogTextCta.text = ""
-                suggestionsHiddenTextCta.text = daxText.html(context)
-
-                onboardingDialogSuggestionsContent.show()
-
-                val afterAnimation = {
-                    onboardingDialogSuggestionsTitle.finishAnimation()
-                    suggestionsDialogTextCta.finishAnimation()
-
-                    onTypingAnimationFinished()
-                    val optionsViews =
-                        listOf(
-                            daxDialogOption1,
-                            daxDialogOption2,
-                            daxDialogOption3,
-                        )
-
-                    // BB dialog has a max of 3 options and if successful we'll only have 3 options and can remove this
-                    val options =
-                        onboardingStore
-                            .getSitesOptions()
-                            .toMutableList()
-                            .apply {
-                                removeAt(1) // Remove the regional news option
-                            }
-
-                    optionsViews.forEachIndexed { index, buttonView ->
-                        options[index].setOptionView(buttonView)
-                        buttonView
-                            .animate()
-                            .alpha(MAX_ALPHA)
-                            .setDuration(DAX_DIALOG_APPEARANCE_ANIMATION)
-                            .withEndAction {
-                                buttonView.setOnClickListener {
-                                    onSuggestedOptionClicked?.invoke(options[index], index)
-                                }
-                            }
-                    }
+                optionsViews.forEachIndexed { index, buttonView ->
+                    val options = onboardingStore.getSitesOptions()
+                    options[index].setOptionView(buttonView)
+                    buttonView.animate().alpha(MAX_ALPHA).duration = DAX_DIALOG_APPEARANCE_ANIMATION
                 }
+                val options = onboardingStore.getSitesOptions()
+                daxDialog.daxDialogOption1.setOnClickListener { onSuggestedOptionClicked?.invoke(options[0]) }
+                daxDialog.daxDialogOption2.setOnClickListener { onSuggestedOptionClicked?.invoke(options[1]) }
+                daxDialog.daxDialogOption3.setOnClickListener { onSuggestedOptionClicked?.invoke(options[2]) }
+                daxDialog.daxDialogOption4.setOnClickListener { onSuggestedOptionClicked?.invoke(options[3]) }
+            }
 
-                onboardingDialogSuggestionsTitle.startTypingAnimation(title, true) {
-                    suggestionsDialogTextCta.startTypingAnimation(daxText, true) { afterAnimation() }
-                }
-
-                onboardingDialogTitleContainer.setOnClickListener {
-                    afterAnimation()
-                }
-                cardContainer.setOnClickListener {
-                    afterAnimation()
-                }
-                onboardingDialogSuggestionsContent.setOnClickListener {
-                    afterAnimation()
-                }
+            daxDialog.suggestionsDialogTextCta.startTypingAnimation(daxText, true) { afterAnimation() }
+            daxDialog.onboardingDialogContent.setOnClickListener {
+                daxDialog.dialogTextCta.finishAnimation()
+                afterAnimation()
             }
         }
     }
@@ -1067,7 +524,6 @@ sealed class OnboardingDaxDialogCta(
     class DaxEndCta(
         override val onboardingStore: OnboardingStore,
         override val appInstallStore: AppInstallStore,
-        private val onboardingDesignExperimentManager: OnboardingDesignExperimentManager,
     ) : OnboardingDaxDialogCta(
         CtaId.DAX_END,
         R.string.onboardingEndDaxDialogDescription,
@@ -1091,62 +547,784 @@ sealed class OnboardingDaxDialogCta(
             onDismissCtaClicked: () -> Unit,
         ) {
             val context = binding.root.context
-
-            when {
-                onboardingDesignExperimentManager.isBuckEnrolledAndEnabled() -> {
-                    setBuckOnboardingDialogView(
-                        message = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-
-                onboardingDesignExperimentManager.isBbEnrolledAndEnabled() -> {
-                    setBBOnboardingDialogView(
-                        description = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-
-                else -> {
-                    setOnboardingDialogView(
-                        daxText = description?.let { context.getString(it) }.orEmpty(),
-                        primaryCtaText = buttonText?.let { context.getString(it) },
-                        binding = binding,
-                        onPrimaryCtaClicked = onPrimaryCtaClicked,
-                        onSecondaryCtaClicked = onSecondaryCtaClicked,
-                        onTypingAnimationFinished = onTypingAnimationFinished,
-                        onDismissCtaClicked = onDismissCtaClicked,
-                    )
-                }
-            }
+            setOnboardingDialogView(
+                daxText = description?.let { context.getString(it) }.orEmpty(),
+                primaryCtaText = buttonText?.let { context.getString(it) },
+                binding = binding,
+                onPrimaryCtaClicked = onPrimaryCtaClicked,
+                onSecondaryCtaClicked = onSecondaryCtaClicked,
+                onTypingAnimationFinished = onTypingAnimationFinished,
+                onDismissCtaClicked = onDismissCtaClicked,
+            )
         }
     }
 
-    internal fun IncludeOnboardingInContextBuckDialogBinding.animateBuckOnboardingDialogEntrance(onAnimationEnd: () -> Unit = {}) {
-        daxDialogDismissButton.alpha = MIN_ALPHA
-
-        with(buckOnboardingDialogView) {
-            alpha = MIN_ALPHA
-            layoutTransition = null
-            animateEntrance(
-                onAnimationEnd = {
-                    with(daxDialogDismissButton) {
-                        show()
-                        animate()
-                            .apply {
-                                alpha(MAX_ALPHA)
-                                duration = DAX_DIALOG_APPEARANCE_ANIMATION
-                            }.start()
-                    }
-                    onAnimationEnd()
-                },
+    class DaxDuckAiFireButtonCta(
+        override val onboardingStore: OnboardingStore,
+        override val appInstallStore: AppInstallStore,
+    ) : OnboardingDaxDialogCta(
+        CtaId.DAX_DUCK_AI_FIRE_BUTTON,
+        R.string.onboardingDuckAiFireButtonDaxDialogDescription,
+        null,
+        AppPixelName.ONBOARDING_DAX_CTA_SHOWN,
+        AppPixelName.ONBOARDING_DAX_CTA_OK_BUTTON,
+        null,
+        AppPixelName.ONBOARDING_DAX_CTA_DISMISS_BUTTON,
+        Pixel.PixelValues.DUCK_AI_FIRE_BUTTON_CTA,
+        onboardingStore,
+        appInstallStore,
+    ) {
+        override fun showOnboardingCta(
+            binding: FragmentBrowserTabBinding,
+            onPrimaryCtaClicked: () -> Unit,
+            onSecondaryCtaClicked: () -> Unit,
+            onTypingAnimationFinished: () -> Unit,
+            onSuggestedOptionClicked: ((DaxDialogIntroOption) -> Unit)?,
+            onDismissCtaClicked: () -> Unit,
+        ) {
+            val context = binding.root.context
+            setOnboardingDialogView(
+                daxTitle = context.getString(R.string.onboardingDuckAiFireButtonDaxDialogTitle),
+                daxText = description?.let { context.getString(it) }.orEmpty(),
+                primaryCtaText = null,
+                binding = binding,
+                onPrimaryCtaClicked = onPrimaryCtaClicked,
+                onSecondaryCtaClicked = onSecondaryCtaClicked,
+                onTypingAnimationFinished = onTypingAnimationFinished,
+                onDismissCtaClicked = null, // no dismiss button
             )
+        }
+    }
+
+    /**
+     * Base class for the brand-design rebrand of [OnboardingDaxDialogCta]. Owns the render
+     * pipeline so subclasses only need to declare their active content include and populate it.
+     *
+     * Mirrors the structure of [DaxBubbleCta.BrandDesignUpdateBubbleCta] but targets the
+     * contextual in-browser dialog layout (`include_onboarding_in_context_dax_dialog_brand_design_update.xml`).
+     *
+     * Subclasses supply:
+     *  - [activeIncludeId]: the id of the single content-include slot to show for this CTA
+     *  - [configureContentViews]: populate title, description, and the active include's children
+     *  - [setOnPrimaryCtaClicked] / [setOnSecondaryCtaClicked] / [setOnOptionClicked]: override only
+     *    for the buttons the subclass actually renders.
+     */
+
+    interface ShowsWingBottom
+
+    abstract class BrandDesignContextualDaxDialogCta(
+        ctaId: CtaId,
+        @StringRes description: Int?,
+        @StringRes buttonText: Int?,
+        shownPixel: Pixel.PixelName?,
+        okPixel: Pixel.PixelName?,
+        cancelPixel: Pixel.PixelName?,
+        closePixel: Pixel.PixelName?,
+        ctaPixelParam: String,
+        onboardingStore: OnboardingStore,
+        appInstallStore: AppInstallStore,
+        open val isLightTheme: Boolean,
+        open val deviceInfo: DeviceInfo,
+        @DrawableRes open val backgroundRes: Int = 0,
+    ) : OnboardingDaxDialogCta(
+        ctaId = ctaId,
+        description = description,
+        buttonText = buttonText,
+        shownPixel = shownPixel,
+        okPixel = okPixel,
+        cancelPixel = cancelPixel,
+        closePixel = closePixel,
+        ctaPixelParam = ctaPixelParam,
+        onboardingStore = onboardingStore,
+        appInstallStore = appInstallStore,
+    ) {
+
+        open val backgroundFillSpec: BackgroundFillSpec? = null
+
+        protected var ctaView: View? = null
+
+        private var runningFadeIn: AnimatorSet? = null
+        private var runningFadeOut: AnimatorSet? = null
+        private var arrowDepthAnimator: ValueAnimator? = null
+        private var cardContainer: TouchInterceptingLinearLayout? = null
+
+        private var isAnimating: Boolean = false
+            set(value) {
+                field = value
+                cardContainer?.interceptChildTouches = value
+            }
+
+        /**
+         * Id of the content-include slot this CTA renders (e.g. [R.id.contextualBrandDesignPrimaryCtaContent]).
+         * `null` means the CTA renders only title + description, with no in-card content slot.
+         */
+        open val activeIncludeId: Int? = null
+
+        abstract val showArrow: Boolean
+
+        /**
+         * Whether the persistent top-right dismiss button is shown for this CTA. Defaults to true.
+         * Override to `false` for CTAs that have no in-dialog dismissal affordance — for instance,
+         * a contextual prompt that the user is expected to resolve by interacting with a target
+         * UI element outside the card (e.g. the fire button in the toolbar).
+         */
+        open val showDismiss: Boolean = true
+
+        /**
+         * Populate the card with subclass-specific content: set title/description text, configure
+         * option buttons, etc. Called before the card fade-in begins so all text is set while views
+         * have `alpha=0` to avoid visible growth.
+         *
+         * Primary-CTA button text is applied by the base class from [buttonText] before this runs;
+         * subclasses do not need to set it.
+         */
+        abstract fun configureContentViews(view: View)
+
+        /**
+         * Hook invoked exactly once after the typing animation has fully settled (natural end or
+         * tap-to-skip). Default is a no-op.
+         *
+         * **Only override when this CTA must trigger the privacy-shield highlight that the legacy
+         * `DaxTrackersBlockedCta` triggers.** The fragment unconditionally passes
+         * [onTypingAnimationFinished] so the highlight gating lives here, in the subclass — not at
+         * the call site. Overriding for any other reason will incorrectly fire the privacy-shield
+         * highlight from a non-trackers CTA.
+         */
+        protected open fun onTypingAnimationSettled(onTypingAnimationFinished: () -> Unit) {
+            // No-op by default — see kdoc for the override contract.
+        }
+
+        override fun hideOnboardingCta(binding: FragmentBrowserTabBinding) {
+            cancelRunningAnimations()
+            hideContainer(binding)
+            ctaView = null
+            cardContainer = null
+        }
+
+        private fun cancelRunningAnimations() {
+            isAnimating = false
+            runningFadeIn?.removeAllListeners()
+            runningFadeIn?.cancel()
+            runningFadeIn = null
+            runningFadeOut?.removeAllListeners()
+            runningFadeOut?.cancel()
+            runningFadeOut = null
+            arrowDepthAnimator?.removeAllUpdateListeners()
+            arrowDepthAnimator?.cancel()
+            arrowDepthAnimator = null
+            wingPlayInGeneration++
+            ctaView?.animate()?.cancel()
+            ctaView?.let { bannerFor(it)?.cancel() }
+            ctaView?.findViewById<DaxTypeAnimationTextView>(R.id.contextualBrandDesignTitle)
+                ?.cancelAnimation()
+        }
+
+        override fun showOnboardingCta(
+            binding: FragmentBrowserTabBinding,
+            onPrimaryCtaClicked: () -> Unit,
+            onSecondaryCtaClicked: () -> Unit,
+            onTypingAnimationFinished: () -> Unit,
+            onSuggestedOptionClicked: ((DaxDialogIntroOption) -> Unit)?,
+            onDismissCtaClicked: () -> Unit,
+        ) {
+            showOnboardingCta(
+                binding = binding,
+                onPrimaryCtaClicked = onPrimaryCtaClicked,
+                onSecondaryCtaClicked = onSecondaryCtaClicked,
+                onTypingAnimationFinished = onTypingAnimationFinished,
+                onSuggestedOptionClicked = onSuggestedOptionClicked,
+                onDismissCtaClicked = onDismissCtaClicked,
+                instantShow = false,
+            )
+        }
+
+        fun showOnboardingCta(
+            binding: FragmentBrowserTabBinding,
+            onPrimaryCtaClicked: () -> Unit,
+            onSecondaryCtaClicked: () -> Unit,
+            onTypingAnimationFinished: () -> Unit,
+            onSuggestedOptionClicked: ((DaxDialogIntroOption) -> Unit)?,
+            onDismissCtaClicked: () -> Unit,
+            instantShow: Boolean,
+        ) {
+            val container = binding.includeOnboardingInContextDaxDialogBrandDesign.root
+            val isContentTransition = isContentTransition(container)
+            ctaView = container
+
+            cancelRunningAnimations()
+
+            if (instantShow) {
+                showInstantly(
+                    container = container,
+                    onPrimaryCtaClicked = onPrimaryCtaClicked,
+                    onSecondaryCtaClicked = onSecondaryCtaClicked,
+                    onSuggestedOptionClicked = onSuggestedOptionClicked,
+                    onDismissCtaClicked = onDismissCtaClicked,
+                    onTypingAnimationFinished = onTypingAnimationFinished,
+                )
+                return
+            }
+
+            val titleView = container.findViewById<DaxTypeAnimationTextView>(R.id.contextualBrandDesignTitle)
+            val descriptionView = container.findViewById<DaxTextView>(R.id.contextualBrandDesignDescription)
+            val dismissButton = container.findViewById<ImageView>(R.id.contextualBrandDesignDismissButton)
+            val cardContainer = container.findViewById<TouchInterceptingLinearLayout>(R.id.contextualBrandDesignCardContainer)
+            val cardView = container.findViewById<DaxOnboardingBubbleBrandDesignUpdateCardView>(R.id.contextualBrandDesignCardView)
+            val targetDepth = if (showArrow && !container.isPhoneLandscape()) 1f else 0f
+            this.cardContainer = cardContainer
+            isAnimating = true
+
+            val activeInclude: View? = activeIncludeId?.let { container.findViewById(it) }
+
+            val notifySettled = {
+                if (isAnimating) {
+                    isAnimating = false
+                    onTypingAnimationSettled(onTypingAnimationFinished)
+                }
+            }
+
+            val typeAndFadeIn = {
+                bannerFor(container)?.slideIn()
+                startWingBottomPlayIn(container)
+                val daxTitle = titleView.text?.toString().orEmpty()
+                val startContentFadeIn = {
+                    val animators = mutableListOf<Animator>(
+                        ObjectAnimator.ofFloat(descriptionView, View.ALPHA, 1f)
+                            .setDuration(DIALOG_CONTENT_FADE_IN_DURATION),
+                    )
+                    activeInclude?.let {
+                        animators += ObjectAnimator.ofFloat(it, View.ALPHA, 1f)
+                            .setDuration(DIALOG_CONTENT_FADE_IN_DURATION)
+                    }
+                    // Dismiss button is persistent: fade it in only if it isn't already fully shown,
+                    // which covers both the first-show path (alpha=0) and the case where a previous
+                    // animation was cancelled mid-flight leaving it at a fractional alpha.
+                    if (dismissButton.alpha < 1f) {
+                        animators += ObjectAnimator.ofFloat(dismissButton, View.ALPHA, 1f)
+                            .setDuration(DIALOG_CONTENT_FADE_IN_DURATION)
+                    }
+                    val currentDepth = cardView.arrowDepthFraction
+                    if (targetDepth != currentDepth) {
+                        arrowDepthAnimator = ValueAnimator.ofFloat(currentDepth, targetDepth).apply {
+                            duration = DIALOG_CONTENT_FADE_IN_DURATION
+                            interpolator = FastOutSlowInInterpolator()
+                            addUpdateListener { cardView.setArrowDepthFraction(it.animatedValue as Float) }
+                        }
+                        animators.add(arrowDepthAnimator!!)
+                    }
+                    runningFadeIn = AnimatorSet().apply {
+                        playTogether(animators.toList())
+                        addListener(object : AnimatorListenerAdapter() {
+                            override fun onAnimationEnd(animation: Animator) {
+                                notifySettled()
+                            }
+                        })
+                        start()
+                    }
+                }
+                if (daxTitle.isEmpty()) {
+                    startContentFadeIn()
+                } else {
+                    titleView.alpha = 1f
+                    titleView.text = ""
+
+                    titleView.typingDelayInMs = TYPING_DELAY_MS
+                    titleView.delayAfterAnimationInMs = TYPING_POST_DELAY_MS
+                    titleView.startTypingAnimation(daxTitle, true) {
+                        startContentFadeIn()
+                    }
+                }
+            }
+
+            if (isContentTransition) {
+                // Content transition: fade out old description + any visible content include, then swap in the new
+                val allContentIncludes = getAllContentIncludes(container)
+                val fadeOutAnimators = mutableListOf<Animator>(
+                    ObjectAnimator.ofFloat(descriptionView, View.ALPHA, 0f)
+                        .setDuration(DIALOG_CONTENT_FADE_IN_DURATION),
+                )
+                allContentIncludes.forEach { include ->
+                    if (include.isVisible && include.alpha > 0f) {
+                        fadeOutAnimators += ObjectAnimator.ofFloat(include, View.ALPHA, 0f)
+                            .setDuration(DIALOG_CONTENT_FADE_IN_DURATION)
+                    }
+                }
+                bannerFor(container)?.slideOut()?.let { fadeOutAnimators += it }
+                if (container.alpha < 1f) {
+                    fadeOutAnimators += ObjectAnimator.ofFloat(container, View.ALPHA, 1f)
+                        .setDuration(DIALOG_CONTENT_FADE_IN_DURATION)
+                }
+                runningFadeOut = AnimatorSet().apply {
+                    playTogether(fadeOutAnimators.toList())
+                    addListener(object : AnimatorListenerAdapter() {
+                        override fun onAnimationEnd(animation: Animator) {
+                            applyContent(container, isContentTransition = true)
+                            if (isAnimating) {
+                                typeAndFadeIn()
+                            }
+                        }
+                    })
+                    start()
+                }
+            } else {
+                applyContent(container, isContentTransition = false)
+                container.show()
+                container.animate().alpha(1f).setDuration(DIALOG_FADE_IN_DURATION).setStartDelay(DIALOG_FADE_IN_START_DELAY)
+                    .withEndAction {
+                        if (isAnimating) {
+                            typeAndFadeIn()
+                        }
+                    }
+            }
+
+            // Tap-to-skip: any tap on the dialog area (card or surrounding backdrop) ends running
+            // animations and snaps all content visible — matches the legacy onboarding behaviour
+            // where the whole screen is the skip surface, not just the card.
+            container.setOnClickListener {
+                snapToFinished(
+                    container = container,
+                    titleView = titleView,
+                    descriptionView = descriptionView,
+                    dismissButton = dismissButton,
+                    activeInclude = activeInclude,
+                    cardContainer = cardContainer,
+                    alreadySettled = !isAnimating,
+                    contentFadeInAnimator = runningFadeIn,
+                    fadeOutAnimator = runningFadeOut,
+                    onSettled = { notifySettled() },
+                )
+            }
+
+            setOnPrimaryCtaClicked(onPrimaryCtaClicked)
+            setOnSecondaryCtaClicked(onSecondaryCtaClicked)
+            setOnOptionClicked(onSuggestedOptionClicked)
+            setOnDismissCtaClicked(onDismissCtaClicked)
+        }
+
+        private fun showInstantly(
+            container: View,
+            onPrimaryCtaClicked: () -> Unit,
+            onSecondaryCtaClicked: () -> Unit,
+            onSuggestedOptionClicked: ((DaxDialogIntroOption) -> Unit)?,
+            onDismissCtaClicked: () -> Unit,
+            onTypingAnimationFinished: () -> Unit,
+        ) {
+            val titleView = container.findViewById<DaxTypeAnimationTextView>(R.id.contextualBrandDesignTitle)
+            val descriptionView = container.findViewById<DaxTextView>(R.id.contextualBrandDesignDescription)
+            val dismissButton = container.findViewById<ImageView>(R.id.contextualBrandDesignDismissButton)
+            val cardContainer = container.findViewById<TouchInterceptingLinearLayout>(R.id.contextualBrandDesignCardContainer)
+            val activeInclude: View? = activeIncludeId?.let { container.findViewById(it) }
+
+            applyContent(container, isContentTransition = false)
+            container.alpha = 1f
+            container.show()
+
+            bannerFor(container)?.snapToFinalPosition()
+
+            // No animation to skip — clear any stale tap-to-skip listener from a prior animated show.
+            container.setOnClickListener(null)
+            setOnPrimaryCtaClicked(onPrimaryCtaClicked)
+            setOnSecondaryCtaClicked(onSecondaryCtaClicked)
+            setOnOptionClicked(onSuggestedOptionClicked)
+            setOnDismissCtaClicked(onDismissCtaClicked)
+
+            snapToFinished(
+                container = container,
+                titleView = titleView,
+                descriptionView = descriptionView,
+                dismissButton = dismissButton,
+                activeInclude = activeInclude,
+                cardContainer = cardContainer,
+                alreadySettled = false,
+                contentFadeInAnimator = null,
+                fadeOutAnimator = null,
+                onSettled = { onTypingAnimationSettled(onTypingAnimationFinished) },
+            )
+        }
+
+        /**
+         * Per-show content setup: reset shared state, populate text via [configureContentViews],
+         * and stage the background. Used by all three show paths (first-show, content transition,
+         * rotation re-inflate). What follows is path-specific: animate, snap, or animate-after-fadeout.
+         */
+        private fun applyContent(container: View, isContentTransition: Boolean) {
+            val titleView = container.findViewById<DaxTypeAnimationTextView>(R.id.contextualBrandDesignTitle)
+            val hiddenTitle = container.findViewById<DaxTextView>(R.id.contextualBrandDesignHiddenTitle)
+            val activeInclude: View? = activeIncludeId?.let { container.findViewById(it) }
+
+            resetSharedViewState(container, isContentTransition = isContentTransition)
+            resetAllIncludesExcept(container, activeInclude)
+            applyPrimaryCtaText(container)
+            applyDismissButtonVisibility(container)
+            configureContentViews(container)
+            applyWingBottomState(container)
+            hiddenTitle.text = titleView.text
+            applyTitleSlotVisibility(container, titleView)
+            bannerFor(container)?.show()
+            applyOptionsContentHeight(container)
+        }
+
+        private fun stripWingForPhoneLandscape(wing: LottieAnimationView) {
+            if (wing.isAnimating) wing.cancelAnimation()
+            wing.isVisible = false
+        }
+
+        internal fun applyWingBottomState(container: View) {
+            wingPlayInGeneration++
+            val wing = container.findViewById<LottieAnimationView>(R.id.wingBottom) ?: return
+            if (container.isPhoneLandscape()) {
+                stripWingForPhoneLandscape(wing)
+                return
+            }
+            (wing.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.startToStart =
+                    if (wing.isTablet()) R.id.contextualBrandDesignCardView else ConstraintLayout.LayoutParams.PARENT_ID
+                wing.layoutParams = lp
+            }
+            val showsWing = this is ShowsWingBottom
+            when {
+                showsWing && !wing.isVisible -> {
+                    // Stage only; [startWingBottomPlayIn] kicks off playback after the banner slides in.
+                    wing.setMinAndMaxProgress(0f, WING_STOP_PROGRESS)
+                    wing.progress = 0f
+                    wing.isVisible = true
+                }
+                showsWing && wing.isVisible -> {
+                    // Persist across same-wing transitions: snap to resting and clear any in-flight
+                    // animator. Covers a settled wing from the previous wing CTA (no visible change),
+                    // an in-flight exit from a non-wing predecessor (whose end-listener would otherwise
+                    // hide the wing), and an in-flight play-in we don't want to restart.
+                    if (wing.isAnimating) {
+                        wing.removeAllAnimatorListeners()
+                        wing.cancelAnimation()
+                    }
+                    wing.setMinAndMaxProgress(0f, WING_STOP_PROGRESS)
+                    wing.progress = WING_STOP_PROGRESS
+                }
+                !showsWing && wing.isVisible -> {
+                    wing.setMinAndMaxProgress(WING_STOP_PROGRESS, 1f)
+                    wing.progress = WING_STOP_PROGRESS
+                    wing.addAnimatorListener(object : AnimatorListenerAdapter() {
+                        override fun onAnimationEnd(animation: Animator) {
+                            wing.isVisible = false
+                            wing.removeAnimatorListener(this)
+                        }
+                    })
+                    wing.playAnimation()
+                }
+                else -> wing.isVisible = false
+            }
+        }
+
+        internal fun startWingBottomPlayIn(container: View) {
+            if (this !is ShowsWingBottom) return
+            val wing = container.findViewById<LottieAnimationView>(R.id.wingBottom) ?: return
+            if (container.isPhoneLandscape()) {
+                stripWingForPhoneLandscape(wing)
+                return
+            }
+            // Frame-based comparison instead of `progress >= WING_STOP_PROGRESS`: Lottie's
+            // [LottieDrawable.setMaxFrame] adds a fixed `+0.99f` offset after truncating the
+            // requested max frame to int, so `setMinAndMaxProgress(0f, 0.5f)` on a composition
+            // whose `endFrame` isn't an even integer (the wing's is `89.99`) leaves the animator
+            // max at `44.99` — read back as `progress ≈ 0.4999`, never quite `>= 0.5`. The int
+            // truncation of `wing.maxFrame` and `wing.frame` cancels that offset out.
+            val stopFrame = wing.maxFrame.toInt()
+            if (!wing.isVisible || wing.isAnimating || wing.frame >= stopFrame) return
+            val generation = wingPlayInGeneration
+            wing.postDelayed(
+                {
+                    if (wingPlayInGeneration != generation) return@postDelayed
+                    if (wing.isVisible && !wing.isAnimating && wing.frame < stopFrame) {
+                        wing.playAnimation()
+                    }
+                },
+                WING_PLAY_IN_DELAY,
+            )
+        }
+
+        private fun snapWingBottomToResting(container: View) {
+            if (this !is ShowsWingBottom) return
+            val wing = container.findViewById<LottieAnimationView>(R.id.wingBottom) ?: return
+            if (container.isPhoneLandscape()) {
+                stripWingForPhoneLandscape(wing)
+                return
+            }
+            if (wing.isAnimating) wing.cancelAnimation()
+            wing.setMinAndMaxProgress(0f, WING_STOP_PROGRESS)
+            wing.progress = WING_STOP_PROGRESS
+            wing.isVisible = true
+        }
+
+        private fun applyOptionsContentHeight(container: View) {
+            if (activeIncludeId != R.id.contextualBrandDesignOptionsContent) return
+            val resources = container.resources
+            val capHeight = resources.getBoolean(R.bool.capContextualOptionsHeight)
+            container.findViewById<View>(R.id.contextualBrandDesignOptionsContent)
+                ?.updateLayoutParams {
+                    height = if (capHeight) {
+                        resources.getDimensionPixelSize(R.dimen.contextualOptionsCappedHeight)
+                    } else {
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    }
+                }
+        }
+
+        /**
+         * Snaps title/description/dismiss/active-include to their final visible state.
+         *
+         * Split out as a testable helper so unit tests can exercise the state machine
+         * (title-before-animation, mid-animation, post-animation, rapid double-tap).
+         */
+        internal fun snapToFinished(
+            container: View,
+            titleView: DaxTypeAnimationTextView,
+            descriptionView: DaxTextView,
+            dismissButton: ImageView,
+            activeInclude: View?,
+            cardContainer: TouchInterceptingLinearLayout,
+            alreadySettled: Boolean,
+            contentFadeInAnimator: AnimatorSet?,
+            fadeOutAnimator: AnimatorSet?,
+            onSettled: () -> Unit,
+        ) {
+            this.cardContainer = cardContainer
+            isAnimating = false
+            fadeOutAnimator?.let { if (it.isRunning) it.cancel() }
+            titleView.finishAnimation()
+            // If typing hasn't started yet (tap during initial fade-in), set title directly
+            // so we don't show an empty title. Restore alpha to 1 for CTAs that do have a title;
+            // empty-title CTAs are unaffected visually since there is no text to render.
+            val hiddenTitle = container.findViewById<DaxTextView>(R.id.contextualBrandDesignHiddenTitle)
+            if (!titleView.hasAnimationStarted()) {
+                titleView.text = hiddenTitle.text
+            }
+            if (!hiddenTitle.text.isNullOrEmpty()) {
+                titleView.alpha = 1f
+            }
+            descriptionView.alpha = 1f
+            dismissButton.alpha = 1f
+            activeInclude?.alpha = 1f
+            container.alpha = 1f
+            bannerFor(container)?.snapToFinalPosition()
+            contentFadeInAnimator?.let { if (it.isRunning) it.end() }
+            container.findViewById<DaxOnboardingBubbleBrandDesignUpdateCardView>(R.id.contextualBrandDesignCardView)
+                ?.setArrowDepthFraction(if (showArrow && !container.isPhoneLandscape()) 1f else 0f)
+            snapWingBottomToResting(container)
+            if (!alreadySettled) {
+                onSettled()
+            }
+        }
+
+        private fun applyPrimaryCtaText(container: View) {
+            val text = buttonText ?: return
+            container.findViewById<DaxButton>(R.id.contextualBrandDesignPrimaryCta)?.setText(text)
+        }
+
+        private fun applyDismissButtonVisibility(container: View) {
+            container.findViewById<View>(R.id.contextualBrandDesignDismissButton)?.isVisible = showDismiss
+        }
+
+        // GONE (not INVISIBLE) so the FrameLayout's marginBottom drops out of the LinearLayout
+        // flow, leaving the description sitting at the card's top padding.
+        private fun applyTitleSlotVisibility(container: View, titleView: DaxTypeAnimationTextView) {
+            val titleIsEmpty = titleView.text?.toString().orEmpty().isEmpty()
+            container.findViewById<View>(R.id.contextualBrandDesignTitleSlot)?.visibility =
+                if (titleIsEmpty) View.GONE else View.VISIBLE
+        }
+
+        private fun bannerFor(container: View): BackgroundBanner? {
+            val view = container.findViewById<OnboardingFillImageView>(R.id.contextualBrandDesignBackground) ?: return null
+            val fillHeightPx = backgroundFillSpec?.heightDpFor(deviceInfo.isTablet())?.toPx(view.context)?.toInt() ?: 0
+            val maxHeightFraction = backgroundFillSpec?.maxHeightFraction ?: 1f
+            return BackgroundBanner(view, backgroundRes, fillHeightPx, maxHeightFraction)
+        }
+
+        /**
+         * Slide-up banner that sits behind the contextual card. Scoped to a single CTA show:
+         * construct per-call and discard. State is read from the view (visibility, translationY)
+         * so callers don't need to thread flags through.
+         */
+        internal class BackgroundBanner(
+            private val view: OnboardingFillImageView,
+            @DrawableRes private val res: Int,
+            private val fillHeightPx: Int,
+            private val maxHeightFraction: Float,
+        ) {
+            val isShowing: Boolean get() = view.isVisible
+
+            /** Stage the banner offscreen, ready for [slideIn] to bring it up. */
+            fun show() {
+                if (res == 0) return
+                view.setImageResource(res)
+                if (fillHeightPx > 0) {
+                    view.setFillHeight(fillHeightPx, maxHeightFraction)
+                } else {
+                    view.clearFill()
+                }
+                view.visibility = View.VISIBLE
+                view.doOnPreDraw { it.translationY = offScreenY() }
+            }
+
+            /**
+             * Snap the banner to its final on-screen position. Registers in the same pre-draw
+             * pass as [show]'s offscreen offset; the later registration wins so the banner lands
+             * fully on-screen on the first frame (used by the instantShow path on rotation).
+             */
+            fun snapToFinalPosition() {
+                if (res == 0) return
+                view.doOnPreDraw { it.translationY = 0f }
+            }
+
+            fun slideIn() {
+                if (!isShowing) return
+                view.animate()
+                    .translationY(0f)
+                    .setDuration(SLIDE_DURATION)
+                    .setInterpolator(AccelerateDecelerateInterpolator())
+                    .start()
+            }
+
+            fun slideOut(): Animator? {
+                if (!isShowing || res == 0) return null
+                return ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, offScreenY())
+                    .setDuration(SLIDE_DURATION)
+            }
+
+            fun cancel() {
+                view.animate().cancel()
+            }
+
+            private fun offScreenY(): Float {
+                val parent = view.parent as? View
+                return if (parent != null) (parent.height - view.top).toFloat() else view.height.toFloat()
+            }
+
+            companion object {
+                private const val SLIDE_DURATION = 300L
+            }
+        }
+
+        /**
+         * True when the brand-design layout is already mounted from a previous CTA. Drives shared-view
+         * persistence (e.g. the dismiss button) so a content swap doesn't snap them to alpha=0.
+         */
+        internal fun isContentTransition(container: View): Boolean =
+            container.alpha > 0f && container.isVisible
+
+        /**
+         * Reset every mutable property shared views may carry over from a previous CTA. Called at
+         * the start of both first-show and mid-transition flows.
+         *
+         * Title alpha resets to 0 — subclasses that render a title set it to 1 via [typeAndFadeIn]
+         * before the typing animation runs. CTAs with no title leave the title view at alpha=0 so
+         * an empty typing animation never plays.
+         *
+         * The dismiss button is a persistent UI control: on first-show ([isContentTransition] = false)
+         * it is reset to alpha=0 so the post-typing fade-in reveals it together with the description;
+         * on a content transition the dialog stays on screen so the dismiss button must remain
+         * visible — we leave its alpha untouched.
+         */
+        internal fun resetSharedViewState(container: View, isContentTransition: Boolean) {
+            // Skip on content transitions so the slide-out animator can drive the banner off-screen.
+            if (!isContentTransition) {
+                container.findViewById<View>(R.id.contextualBrandDesignBackground)?.visibility = View.GONE
+            }
+            container.findViewById<View>(R.id.contextualBrandDesignTitleSlot)?.visibility = View.VISIBLE
+            container.findViewById<DaxTypeAnimationTextView>(R.id.contextualBrandDesignTitle)?.apply {
+                alpha = 0f
+                text = ""
+            }
+            container.findViewById<DaxTextView>(R.id.contextualBrandDesignHiddenTitle)?.apply {
+                // Hidden title is android:visibility="invisible" in XML — alpha is not rendered.
+                // It acts as a text cache for snapToFinished before the typing animation starts.
+                text = ""
+            }
+            container.findViewById<DaxTextView>(R.id.contextualBrandDesignDescription)?.apply {
+                alpha = 0f
+                text = ""
+            }
+            if (!isContentTransition) {
+                container.findViewById<View>(R.id.contextualBrandDesignDismissButton)?.alpha = 0f
+                container.findViewById<DaxOnboardingBubbleBrandDesignUpdateCardView>(R.id.contextualBrandDesignCardView)
+                    ?.setArrowDepthFraction(0f)
+            }
+            container.findViewById<View>(R.id.wavingDax)?.visibility = View.GONE
+        }
+
+        protected open val allContentIncludeIds: List<Int> = listOf(
+            R.id.contextualBrandDesignPrimaryCtaContent,
+            R.id.contextualBrandDesignOptionsContent,
+            R.id.contextualBrandDesignNoCtaContent,
+        )
+
+        /** Returns all content-include slots in the card. Used to hide inactive includes. */
+        internal fun getAllContentIncludes(view: View): List<View> =
+            allContentIncludeIds.mapNotNull { view.findViewById(it) }
+
+        internal fun resetAllIncludesExcept(view: View, active: View?) {
+            getAllContentIncludes(view).forEach { include ->
+                if (active != null && include == active) {
+                    include.show()
+                    include.alpha = 0f
+                } else {
+                    include.gone()
+                }
+            }
+        }
+
+        /** No-op by default. Subclasses with a primary CTA button override this. */
+        open fun setOnPrimaryCtaClicked(onButtonClicked: () -> Unit) {
+            // No-op.
+        }
+
+        /** No-op by default. Subclasses with a secondary CTA button override this. */
+        open fun setOnSecondaryCtaClicked(onButtonClicked: () -> Unit) {
+            // No-op.
+        }
+
+        /** No-op by default. Subclasses with option buttons override this. */
+        open fun setOnOptionClicked(onOptionClicked: ((DaxDialogIntroOption) -> Unit)?) {
+            // No-op.
+        }
+
+        private fun setOnDismissCtaClicked(onButtonClicked: () -> Unit) {
+            ctaView?.findViewById<View>(R.id.contextualBrandDesignDismissButton)?.setOnClickListener {
+                onButtonClicked.invoke()
+            }
+        }
+
+        protected fun View.isTablet(): Boolean = deviceInfo.isTablet()
+
+        protected fun View.isPhoneLandscape(): Boolean =
+            !deviceInfo.isTablet() &&
+                context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        companion object {
+            private const val DIALOG_FADE_IN_DURATION = 400L
+            private const val DIALOG_FADE_IN_START_DELAY = 200L
+            private const val DIALOG_CONTENT_FADE_IN_DURATION = 200L
+            private const val TYPING_DELAY_MS = 20L
+            private const val TYPING_POST_DELAY_MS = 20L
+            private const val WING_STOP_PROGRESS = 0.5f
+            private const val WING_PLAY_IN_DELAY = 300L
+
+            // Shared across CTA instances because the fragment swaps contextual CTAs without
+            // calling hideOnboardingCta on the previous one — a per-instance ref couldn't
+            // reach the pending runnable posted on the shared wingBottom view.
+            private var wingPlayInGeneration = 0
+
+            /**
+             * Cancels the title typing animation and hides the brand-design root, without
+             * touching the AnimatorSet state owned by a CTA instance. Used by the fragment as
+             * a no-instance fallback and by [hideOnboardingCta] after instance-level cleanup.
+             */
+            internal fun hideContainer(binding: FragmentBrowserTabBinding) {
+                val root = binding.includeOnboardingInContextDaxDialogBrandDesign.root
+                root.findViewById<DaxTypeAnimationTextView>(R.id.contextualBrandDesignTitle)
+                    ?.cancelAnimation()
+                root.gone()
+            }
         }
     }
 
@@ -1162,6 +1340,14 @@ sealed class OnboardingDaxDialogCta(
     }
 }
 
+data class BackgroundFillSpec(
+    val fillHeightDp: Float,
+    val tabletFillHeightDp: Float = fillHeightDp,
+    val maxHeightFraction: Float = 1f,
+) {
+    fun heightDpFor(isTablet: Boolean): Float = if (isTablet) tabletFillHeightDp else fillHeightDp
+}
+
 sealed class DaxBubbleCta(
     override val ctaId: CtaId,
     @StringRes open val title: Int,
@@ -1170,6 +1356,7 @@ sealed class DaxBubbleCta(
     open val options: List<DaxDialogIntroOption>? = null,
     @StringRes open val primaryCta: Int? = null,
     @StringRes open val secondaryCta: Int? = null,
+    @DrawableRes open val backgroundRes: Int = 0,
     override val shownPixel: Pixel.PixelName?,
     override val okPixel: Pixel.PixelName?,
     override val cancelPixel: Pixel.PixelName? = null,
@@ -1302,252 +1489,7 @@ sealed class DaxBubbleCta(
         view.findViewById<View>(R.id.cardContainer).setOnClickListener { afterAnimation() }
     }
 
-    fun showBBCta(
-        binding: IncludeOnboardingBubbleBbDialogBinding,
-        configuration: DaxBubbleCta,
-        onTypingAnimationFinished: () -> Unit,
-    ) {
-        val context = binding.root.context
-        ctaView = binding.root
-        clearBubbleBBDialog(binding)
-
-        val daxTitle = context.getString(title)
-        val daxText = context.getString(description)
-        val optionsViews: List<MaterialButton> =
-            listOf(
-                binding.daxDialogOption1,
-                binding.daxDialogOption2,
-                binding.daxDialogOption3,
-            )
-
-        when (configuration) {
-            is DaxEndCta -> {
-                binding.headerImage.show()
-                binding.daxBubbleDialogTitle.gravity = Gravity.CENTER_HORIZONTAL
-                binding.dialogTextCta.gravity = Gravity.CENTER_HORIZONTAL
-            }
-            is DaxPrivacyProCta -> {
-                binding.headerImage.gone()
-                binding.daxBubbleDialogTitle.gravity = Gravity.CENTER_HORIZONTAL
-                binding.dialogTextCta.gravity = Gravity.CENTER_HORIZONTAL
-            }
-            else -> Unit
-        }
-
-        primaryCta?.let { primaryCtaRes ->
-            with(binding.primaryCta) {
-                show()
-                alpha = 0f
-                text = context.getString(primaryCtaRes)
-            }
-        }
-
-        secondaryCta?.let { secondaryCtaRes ->
-            with(binding.secondaryCta) {
-                show()
-                alpha = 0f
-                text = context.getString(secondaryCtaRes)
-            }
-        }
-
-        placeholder?.let {
-            with(binding.placeholderImageView) {
-                show()
-                alpha = 0f
-            }
-        }
-
-        options?.let { options ->
-            // BB dialog has a max of 3 options and if successful we'll only have 3 options and can remove this
-            val bbOptions =
-                options
-                    .toMutableList()
-                    .apply {
-                        if (configuration is DaxIntroVisitSiteOptionsCta) {
-                            removeAt(1) // Remove the regional news option
-                        }
-                    }.toList()
-
-            optionsViews.forEachIndexed { index, buttonView ->
-                buttonView.alpha = 0f
-                if (bbOptions.size > index) {
-                    bbOptions[index].setOptionView(buttonView)
-                    buttonView.show()
-                } else {
-                    buttonView.gone()
-                }
-            }
-        }
-
-        with(binding) {
-            val afterAnimation = {
-                daxBubbleDialogTitle.finishAnimation()
-                dialogTextCta.finishAnimation()
-                placeholder?.let { placeholderImageView.fadeIn() }
-                primaryCta.fadeIn()
-                secondaryCta.fadeIn()
-                options?.let {
-                    optionsViews.forEachIndexed { index, buttonView ->
-                        if (it.size > index) {
-                            buttonView.fadeIn()
-                        }
-                    }
-                }
-                onTypingAnimationFinished()
-            }
-
-            dialogTextCta.text = ""
-            hiddenTextCta.text = daxText.html(context)
-
-            TransitionManager.beginDelayedTransition(cardView, AutoTransition())
-            root.show()
-
-            val title = daxTitle.html(context)
-            hiddenDaxBubbleDialogTitle.text = title
-            daxBubbleDialogTitle.text = ""
-
-            fun runTypingAnimations() {
-                daxBubbleDialogTitle.startTypingAnimation(daxTitle, true) {
-                    dialogTextCta.startTypingAnimation(daxText, true) {
-                        afterAnimation()
-                    }
-                }
-            }
-
-            root.fadeIn().setStartDelay(500).withEndAction {
-                if (configuration is DaxEndCta) {
-                    headerImage.fadeIn().withEndAction {
-                        runTypingAnimations()
-                    }
-                } else {
-                    runTypingAnimations()
-                }
-            }
-            cardContainer.setOnClickListener { afterAnimation() }
-        }
-    }
-
-    fun showBuckCta(
-        binding: IncludeOnboardingBubbleBuckDialogBinding,
-        configuration: DaxBubbleCta,
-        onAnimationEnd: () -> Unit,
-    ) {
-        val context = binding.root.context
-        ctaView = binding.root
-        clearBubbleBuckDialog(binding)
-
-        val daxTitle = context.getString(title)
-        val daxText = context.getString(description)
-        val optionsViews: List<MaterialButton> =
-            listOf(
-                binding.daxDialogOption1,
-                binding.daxDialogOption2,
-                binding.daxDialogOption3,
-            )
-
-        primaryCta?.let { primaryCtaRes ->
-            with(binding.primaryCta) {
-                show()
-                alpha = 0f
-                text = context.getString(primaryCtaRes)
-            }
-        }
-
-        secondaryCta?.let { secondaryCtaRes ->
-            with(binding.secondaryCta) {
-                show()
-                alpha = 0f
-                text = context.getString(secondaryCtaRes)
-            }
-        }
-
-        placeholder?.let {
-            with(binding.placeholderImageView) {
-                show()
-                alpha = 0f
-            }
-        }
-
-        options?.let { options ->
-            // Buck dialog has a max of 3 options and if successful we'll only have 3 options and can remove this
-            val buckOptions =
-                options
-                    .toMutableList()
-                    .apply {
-                        if (configuration is DaxIntroVisitSiteOptionsCta) {
-                            removeAt(1) // Remove the regional news option
-                        }
-                    }.toList()
-
-            optionsViews.forEachIndexed { index, buttonView ->
-                if (buckOptions.size > index) {
-                    buckOptions[index].setOptionView(buttonView)
-                    buttonView.alpha = 0f
-                    buttonView.show()
-                } else {
-                    buttonView.gone()
-                }
-            }
-        }
-
-        if (configuration is DaxEndCta) {
-            binding.root.updatePadding(bottom = 8.toPx())
-            binding.buckOnboardingDialogView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                bottomMargin = 0.toPx()
-            }
-        }
-
-        with(binding) {
-            dialogTextCta.text = ""
-            hiddenTextCta.text = daxText.html(context)
-
-            with(daxBubbleDialogTitle) {
-                text = daxTitle.html(context)
-                alpha = 0f
-            }
-
-            root.show()
-
-            fun View.fadeIn(): ViewPropertyAnimator = animate().alpha(1f).setDuration(500)
-
-            val afterAnimation = {
-                dialogTextCta.finishAnimation()
-                placeholder?.let { placeholderImageView.fadeIn() }
-                primaryCta.fadeIn()
-                secondaryCta.fadeIn()
-                options?.let {
-                    optionsViews.forEachIndexed { index, buttonView ->
-                        if (it.size > index) {
-                            buttonView.fadeIn()
-                        }
-                    }
-                }
-
-                onAnimationEnd()
-            }
-
-            with(buckOnboardingDialogView) {
-                animateEntrance(
-                    onAnimationEnd = {
-                        daxDialogDismissButton.fadeIn()
-                        daxBubbleDialogTitle
-                            .fadeIn()
-                            .withEndAction {
-                                dialogTextCta.startTypingAnimation(daxText, true) {
-                                    afterAnimation()
-                                }
-                            }
-                    },
-                )
-                setOnClickListener {
-                    afterAnimation()
-                }
-            }
-            dialogTextCta.setOnClickListener { afterAnimation() }
-        }
-    }
-
-    private fun clearDialog() {
+    protected open fun clearDialog() {
         ctaView?.findViewById<DaxButton>(R.id.primaryCta)?.alpha = 0f
         ctaView?.findViewById<DaxButton>(R.id.primaryCta)?.gone()
         ctaView?.findViewById<DaxButton>(R.id.secondaryCta)?.alpha = 0f
@@ -1564,51 +1506,25 @@ sealed class DaxBubbleCta(
         ctaView?.findViewById<DaxButton>(R.id.daxDialogOption4)?.gone()
     }
 
-    private fun clearBubbleBuckDialog(binding: IncludeOnboardingBubbleBuckDialogBinding) {
-        binding.apply {
-            this.daxDialogDismissButton.alpha = 0f
-            this.primaryCta.gone()
-            this.secondaryCta.gone()
-            this.daxDialogOption1.gone()
-            this.daxDialogOption2.gone()
-            this.daxDialogOption3.gone()
-        }
-    }
-
-    private fun clearBubbleBBDialog(binding: IncludeOnboardingBubbleBbDialogBinding) {
-        binding.apply {
-            primaryCta.alpha = 0f
-            primaryCta.gone()
-            secondaryCta.alpha = 0f
-            secondaryCta.gone()
-            daxDialogOption1.alpha = 0f
-            daxDialogOption1.gone()
-            daxDialogOption2.alpha = 0f
-            daxDialogOption2.gone()
-            daxDialogOption3.alpha = 0f
-            daxDialogOption3.gone()
-        }
-    }
-
-    fun setOnPrimaryCtaClicked(onButtonClicked: () -> Unit) {
+    open fun setOnPrimaryCtaClicked(onButtonClicked: () -> Unit) {
         ctaView?.findViewById<MaterialButton>(R.id.primaryCta)?.setOnClickListener {
             onButtonClicked.invoke()
         }
     }
 
-    fun setOnSecondaryCtaClicked(onButtonClicked: () -> Unit) {
+    open fun setOnSecondaryCtaClicked(onButtonClicked: () -> Unit) {
         ctaView?.findViewById<MaterialButton>(R.id.secondaryCta)?.setOnClickListener {
             onButtonClicked.invoke()
         }
     }
 
-    fun setOnDismissCtaClicked(onButtonClicked: () -> Unit) {
+    open fun setOnDismissCtaClicked(onButtonClicked: () -> Unit) {
         ctaView?.findViewById<View>(R.id.daxDialogDismissButton)?.setOnClickListener {
             onButtonClicked.invoke()
         }
     }
 
-    fun setOnOptionClicked(
+    open fun setOnOptionClicked(
         onboardingExperimentEnabled: Boolean = false,
         configuration: DaxBubbleCta? = null,
         onOptionClicked: (DaxDialogIntroOption, index: Int?) -> Unit,
@@ -1645,15 +1561,6 @@ sealed class DaxBubbleCta(
         }
     }
 
-    fun hideDaxBubbleCta(binding: FragmentBrowserTabBinding) {
-        binding.includeNewBrowserTab.includeOnboardingBuckDialogBubble.root
-            .gone()
-        binding.includeNewBrowserTab.includeOnboardingBBDialogBubble.root
-            .gone()
-        binding.includeNewBrowserTab.includeOnboardingDaxDialogBubble.root
-            .gone()
-    }
-
     override val markAsReadOnShow: Boolean = true
 
     override fun pixelCancelParameters(): Map<String, String> = mapOf(Pixel.PixelParameter.CTA_SHOWN to ctaPixelParam)
@@ -1676,6 +1583,485 @@ sealed class DaxBubbleCta(
         onboardingStore = onboardingStore,
         appInstallStore = appInstallStore,
     )
+
+    interface ShowsWavingDax {
+        val restartWavingDax: Boolean get() = false
+        val wavingDaxSpec: WavingDaxSpec
+
+        fun configureWavingDax(
+            dax: LottieAnimationView,
+            deviceInfo: DeviceInfo,
+            improvementsEnabled: Boolean = false,
+        ) {
+            val spec = wavingDaxSpec
+            val density = dax.resources.displayMetrics.density
+            dax.rotation = spec.rotationDegrees
+            if (improvementsEnabled) {
+                dax.translationY = spec.bottomTranslationYDp * density
+            } else {
+                dax.translationX = spec.translationXDp * density
+                dax.translationY = spec.translationYDp * density
+            }
+            (dax.layoutParams as? ConstraintLayout.LayoutParams)?.let { lp ->
+                lp.startToStart = if (spec.anchorToCardOnTablet && deviceInfo.isTablet()) {
+                    R.id.brandDesignCardView
+                } else {
+                    ConstraintLayout.LayoutParams.PARENT_ID
+                }
+                if (improvementsEnabled) {
+                    lp.topToBottom = ConstraintLayout.LayoutParams.UNSET
+                    lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                } else {
+                    lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET
+                    lp.topToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                    lp.height = (spec.maxHeightDp * density).toInt()
+                }
+                dax.layoutParams = lp
+            }
+        }
+    }
+
+    data class WavingDaxSpec(
+        val rotationDegrees: Float,
+        val translationXDp: Float,
+        val translationYDp: Float,
+        val minHeightDp: Float,
+        val maxHeightDp: Float,
+        val anchorToCardOnTablet: Boolean,
+    ) {
+        val bottomTranslationYDp: Float get() = translationYDp + maxHeightDp
+    }
+
+    abstract class BrandDesignUpdateBubbleCta(
+        ctaId: CtaId,
+        @StringRes title: Int,
+        @StringRes description: Int,
+        options: List<DaxDialogIntroOption>? = null,
+        @DrawableRes backgroundRes: Int = 0,
+        shownPixel: Pixel.PixelName?,
+        okPixel: Pixel.PixelName?,
+        ctaPixelParam: String,
+        onboardingStore: OnboardingStore,
+        appInstallStore: AppInstallStore,
+        open val isLightTheme: Boolean,
+        open val deviceInfo: DeviceInfo,
+        open val onboardingImprovementsEnabled: Boolean = true,
+        open val onboardingImprovementsV2Enabled: Boolean = true,
+    ) : DaxBubbleCta(
+        ctaId = ctaId,
+        title = title,
+        description = description,
+        options = options,
+        backgroundRes = backgroundRes,
+        shownPixel = shownPixel,
+        okPixel = okPixel,
+        ctaPixelParam = ctaPixelParam,
+        onboardingStore = onboardingStore,
+        appInstallStore = appInstallStore,
+    ) {
+
+        open val backgroundFillSpec: BackgroundFillSpec? = null
+
+        protected fun View.isTablet(): Boolean = deviceInfo.isTablet()
+
+        protected fun View.isPhoneLandscape(): Boolean =
+            !deviceInfo.isTablet() &&
+                context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        companion object {
+            private const val DIALOG_FADE_IN_DURATION = 400L
+            private const val DIALOG_CONTENT_FADE_IN_DURATION = 200L
+            private const val HEADER_IMAGE_FADE_IN_DURATION = 300L
+            private const val ARROW_DEPTH_ANIMATION_DURATION = 200L
+            private const val TYPING_DELAY_MS = 20L
+            private const val TYPING_POST_DELAY_MS = 20L
+            private const val DISMISS_BORDER_WIDTH_DP = 1.5f
+        }
+
+        abstract val activeIncludeIds: List<Int>
+
+        abstract val showArrow: Boolean
+
+        abstract fun configureContentViews(view: View)
+
+        protected open fun decorateDescription(context: Context, text: CharSequence): CharSequence = text
+
+        private var cardContainer: TouchInterceptingLinearLayout? = null
+
+        private var isAnimating: Boolean = false
+            set(value) {
+                field = value
+                cardContainer?.interceptChildTouches = value
+            }
+
+        private var contentFadeInAnimator: AnimatorSet? = null
+        private var fadeOutAnimator: AnimatorSet? = null
+        private var arrowDepthAnimator: ValueAnimator? = null
+
+        private val wavingDaxController: WavingDaxController? by lazy {
+            if (onboardingImprovementsEnabled && this is ShowsWavingDax) {
+                WavingDaxController(showArrow, deviceInfo, wavingDaxSpec, improvementsV2Enabled = onboardingImprovementsV2Enabled)
+            } else {
+                null
+            }
+        }
+
+        protected fun resolveOnboardingContext(context: Context): Context {
+            val themeRes = if (isLightTheme) {
+                DesignSystemR.style.Theme_DuckDuckGo_Light_Onboarding
+            } else {
+                DesignSystemR.style.Theme_DuckDuckGo_Dark_Onboarding
+            }
+            return ContextThemeWrapper(context, themeRes)
+        }
+
+        private fun styleDismissButton(button: ImageView) {
+            val themedContext = resolveOnboardingContext(button.context)
+            val bgColor = themedContext.getColorFromAttr(DesignSystemR.attr.onboardingSurfaceTertiary)
+            val borderColor = themedContext.getColorFromAttr(DesignSystemR.attr.onboardingAccentAltPrimary)
+            val iconColor = themedContext.getColorFromAttr(DesignSystemR.attr.onboardingIconsPrimary)
+
+            button.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(bgColor)
+                setStroke(DISMISS_BORDER_WIDTH_DP.toPx().toInt(), borderColor)
+            }
+            ImageViewCompat.setImageTintList(button, ColorStateList.valueOf(iconColor))
+        }
+
+        private fun getAllContentIncludes(view: View): List<View> = listOfNotNull(
+            view.findViewById<View>(R.id.optionsContent),
+            view.findViewById<View>(R.id.primaryCta),
+            view.findViewById<View>(R.id.secondaryCta),
+        )
+
+        internal fun applyWavingDaxState(container: View, showsWavingDax: ShowsWavingDax?) {
+            container.findViewById<LottieAnimationView>(R.id.wavingDax)?.let { dax ->
+                if (showsWavingDax != null && !container.isPhoneLandscape()) {
+                    showsWavingDax.configureWavingDax(
+                        dax = dax,
+                        deviceInfo = deviceInfo,
+                        improvementsEnabled = onboardingImprovementsEnabled && onboardingImprovementsV2Enabled,
+                    )
+                    if (onboardingImprovementsEnabled) {
+                        dax.isInvisible = true
+                    } else {
+                        if (!dax.isVisible || dax.alpha == 0f) {
+                            dax.progress = 0f
+                            dax.alpha = 1f
+                            dax.isVisible = true
+                            dax.post { dax.playAnimation() }
+                        }
+                    }
+                } else {
+                    dax.isGone = true
+                }
+            }
+        }
+
+        /**
+         * The fin depth [showCta] should apply, or null when the controller owns the fin (waving-Dax
+         * CTAs in portrait/tablet). The null case mirrors the controller's portrait/tablet ownership
+         * guard, so [showCta] and the controller can never both write the fin.
+         */
+        private fun showCtaFinTarget(container: View): Float? {
+            if (onboardingImprovementsEnabled && this is ShowsWavingDax && !container.isPhoneLandscape()) return null
+            return if (showArrow && !container.isPhoneLandscape()) 1f else 0f
+        }
+
+        fun applyFit() {
+            val container = ctaView ?: return
+            wavingDaxController?.applyFit(container)
+        }
+
+        fun onOrientationChanged() {
+            if (!onboardingImprovementsEnabled) return
+            val container = ctaView ?: return
+            val cardView = container.findViewById<DaxOnboardingBubbleBrandDesignUpdateCardView>(R.id.brandDesignCardView) ?: return
+
+            applyWavingDaxState(container, this as? ShowsWavingDax)
+            cardView.setArrowDepthFraction(showCtaFinTarget(container) ?: 0f)
+            wavingDaxController?.reset()
+            container.post { applyFit() }
+        }
+
+        private fun resetAllIncludesExcept(view: View, active: List<View>) {
+            getAllContentIncludes(view).forEach { include ->
+                if (active.contains(include)) {
+                    include.show()
+                    include.alpha = 0f
+                } else {
+                    include.gone()
+                }
+            }
+        }
+
+        override fun showCta(
+            container: View,
+            onTypingAnimationFinished: () -> Unit,
+        ) {
+            ctaView = container
+
+            cancelRunningAnimations()
+            wavingDaxController?.reset()
+            val isContentTransition = container.alpha > 0f && container.isVisible // card already visible from previous CTA
+
+            val cardView = container.findViewById<DaxOnboardingBubbleBrandDesignUpdateCardView>(R.id.brandDesignCardView)
+
+            val daxTitle = container.context.getString(title)
+            val daxDescription = container.context.getString(description).preventWidows()
+            val descriptionText = decorateDescription(container.context, daxDescription.html(container.context))
+
+            val titleView = container.findViewById<DaxTypeAnimationTextView>(R.id.brandDesignTitle)
+            val hiddenTitle = container.findViewById<DaxTextView>(R.id.brandDesignHiddenTitle)
+            val descriptionView = container.findViewById<DaxTextView>(R.id.brandDesignDescription)
+            val dismissButton = container.findViewById<ImageView>(R.id.brandDesignDismissButton)
+            val headerImage = container.findViewById<ImageView>(R.id.brandDesignHeaderImage)
+            styleDismissButton(dismissButton)
+            cardContainer = container.findViewById<TouchInterceptingLinearLayout>(R.id.brandDesignCardContainer)
+            isAnimating = true
+
+            val activeIncludes = activeIncludeIds.map {
+                container.findViewById<View>(it)
+            }
+
+            // Hides the header between CTAs; subclasses that use it re-enable
+            // visibility inside configureContentViews().
+            val resetHeaderState = {
+                headerImage?.isVisible = false
+                headerImage?.alpha = 0f
+            }
+
+            val resetTextAlignment = {
+                titleView.gravity = Gravity.START
+                hiddenTitle.gravity = Gravity.START
+                descriptionView.gravity = Gravity.START
+            }
+
+            val wavingDax = this as? ShowsWavingDax
+
+            // Helper: type title then fade in content
+            val typeAndFadeIn = {
+                hiddenTitle.text = daxTitle.html(container.context)
+                descriptionView.text = descriptionText
+
+                val startTyping = {
+                    titleView.alpha = 1f
+                    titleView.text = ""
+
+                    titleView.typingDelayInMs = TYPING_DELAY_MS
+                    titleView.delayAfterAnimationInMs = TYPING_POST_DELAY_MS
+                    titleView.startTypingAnimation(daxTitle, true) {
+                        val animators = mutableListOf<Animator>(
+                            ObjectAnimator.ofFloat(descriptionView, View.ALPHA, 1f)
+                                .setDuration(DIALOG_CONTENT_FADE_IN_DURATION),
+                            ObjectAnimator.ofFloat(dismissButton, View.ALPHA, 1f)
+                                .setDuration(DIALOG_CONTENT_FADE_IN_DURATION),
+                        )
+                        activeIncludes.forEach {
+                            animators.add(
+                                ObjectAnimator.ofFloat(it, View.ALPHA, 1f)
+                                    .setDuration(DIALOG_CONTENT_FADE_IN_DURATION),
+                            )
+                        }
+                        // Read depth live: the first-show arm synchronously sets it before this lambda runs,
+                        // so a value captured at function entry would animate from a stale snapshot.
+                        val targetDepth = showCtaFinTarget(container)
+                        if (targetDepth != null) {
+                            val currentDepth = cardView.arrowDepthFraction
+                            if (targetDepth != currentDepth) {
+                                arrowDepthAnimator = ValueAnimator.ofFloat(currentDepth, targetDepth).apply {
+                                    duration = ARROW_DEPTH_ANIMATION_DURATION
+                                    interpolator = FastOutSlowInInterpolator()
+                                    addUpdateListener { cardView.setArrowDepthFraction(it.animatedValue as Float) }
+                                }
+                                animators.add(arrowDepthAnimator!!)
+                            }
+                        }
+                        contentFadeInAnimator = AnimatorSet().apply {
+                            playTogether(animators.toList())
+                            addListener(object : AnimatorListenerAdapter() {
+                                override fun onAnimationEnd(animation: Animator) {
+                                    if (isAnimating) {
+                                        isAnimating = false
+                                        onTypingAnimationFinished()
+                                    }
+                                }
+                            })
+                            start()
+                        }
+                    }
+                }
+
+                if (headerImage?.isVisible == true) {
+                    headerImage.animate()
+                        .alpha(1f)
+                        .setDuration(HEADER_IMAGE_FADE_IN_DURATION)
+                        .withEndAction {
+                            // cancel() invokes withEndAction; skip typing when snapToFinished has
+                            // already set the final state.
+                            if (isAnimating) {
+                                startTyping()
+                            }
+                        }
+                } else {
+                    startTyping()
+                }
+            }
+
+            val applySettledState = {
+                hiddenTitle.text = daxTitle.html(container.context)
+                descriptionView.text = descriptionText
+                if (!titleView.hasAnimationStarted()) {
+                    titleView.text = daxTitle.html(container.context)
+                }
+                titleView.alpha = 1f
+                descriptionView.alpha = 1f
+                dismissButton.alpha = 1f
+                activeIncludes.forEach {
+                    it.alpha = 1f
+                }
+                if (headerImage?.isVisible == true) {
+                    headerImage.alpha = 1f
+                }
+                showCtaFinTarget(container)?.let { cardView.setArrowDepthFraction(it) }
+            }
+
+            if (isContentTransition) {
+                // Content transition: fade out title + description + visible includes, then swap and animate new
+                val allContentIncludes = getAllContentIncludes(container)
+                val fadeOutAnimators = mutableListOf<Animator>(
+                    ObjectAnimator.ofFloat(titleView, View.ALPHA, 0f)
+                        .setDuration(DIALOG_CONTENT_FADE_IN_DURATION),
+                    ObjectAnimator.ofFloat(descriptionView, View.ALPHA, 0f)
+                        .setDuration(DIALOG_CONTENT_FADE_IN_DURATION),
+                )
+                // Fade out any currently visible content include
+                allContentIncludes.forEach { include ->
+                    if (include.isVisible && include.alpha > 0f) {
+                        fadeOutAnimators += ObjectAnimator.ofFloat(include, View.ALPHA, 0f)
+                            .setDuration(DIALOG_CONTENT_FADE_IN_DURATION)
+                    }
+                }
+                container.findViewById<LottieAnimationView>(R.id.wavingDax)?.let { dax ->
+                    if (dax.isVisible && dax.alpha > 0f && (wavingDax == null || wavingDax.restartWavingDax)) {
+                        fadeOutAnimators += ObjectAnimator.ofFloat(dax, View.ALPHA, 0f)
+                            .setDuration(DIALOG_CONTENT_FADE_IN_DURATION)
+                    }
+                }
+                fadeOutAnimator = AnimatorSet().apply {
+                    playTogether(fadeOutAnimators.toList())
+                    addListener(object : AnimatorListenerAdapter() {
+                        override fun onAnimationEnd(animation: Animator) {
+                            // After fade-out: hide old includes, show new one.
+                            // Note: do NOT call clearDialog() here — it would re-zero the dismiss
+                            // button alpha causing a flicker. Instead, selectively reset content only.
+                            resetAllIncludesExcept(container, activeIncludes)
+                            resetHeaderState()
+                            resetTextAlignment()
+                            configureContentViews(container)
+                            applyWavingDaxState(container, wavingDax)
+                            // Blank the title so typing (or snapped settled state) shows new text, not stale.
+                            titleView.text = ""
+                            if (!isAnimating) {
+                                applySettledState()
+                            } else {
+                                typeAndFadeIn()
+                            }
+                        }
+                    })
+                    start()
+                }
+            } else {
+                clearDialog()
+                resetAllIncludesExcept(container, activeIncludes)
+                hiddenTitle.text = daxTitle.html(container.context)
+                descriptionView.text = descriptionText
+                resetHeaderState()
+                resetTextAlignment()
+                configureContentViews(container)
+                applyWavingDaxState(container, wavingDax)
+                cardView.setArrowDepthFraction(showCtaFinTarget(container) ?: 0f)
+                container.show()
+                container.animate().alpha(1f).setDuration(DIALOG_FADE_IN_DURATION).setStartDelay(200L)
+                    .withEndAction {
+                        if (isAnimating) {
+                            typeAndFadeIn()
+                        }
+                    }
+            }
+
+            // Tap-to-skip: end running animations and snap all content visible
+            fun snapToFinished() {
+                // Set the flag before cancelling animators; cancel() fires end callbacks
+                // (fadeOutAnimator.onAnimationEnd / headerImage withEndAction) which read it.
+                val wasAnimating = isAnimating
+                isAnimating = false
+                titleView.finishAnimation()
+                headerImage?.animate()?.cancel()
+                val pendingFadeOut = fadeOutAnimator
+                if (pendingFadeOut?.isRunning == true) {
+                    // cancel() fires onAnimationEnd synchronously, which applies settled state via the branch above.
+                    pendingFadeOut.cancel()
+                } else {
+                    applySettledState()
+                }
+                contentFadeInAnimator?.let { if (it.isRunning) it.end() }
+                showCtaFinTarget(container)?.let { cardView.setArrowDepthFraction(it) }
+                if (wasAnimating) {
+                    onTypingAnimationFinished()
+                }
+            }
+            cardContainer?.setOnClickListener { snapToFinished() }
+        }
+
+        fun cancelRunningAnimations() {
+            isAnimating = false
+            contentFadeInAnimator?.removeAllListeners()
+            contentFadeInAnimator?.cancel()
+            contentFadeInAnimator = null
+            fadeOutAnimator?.removeAllListeners()
+            fadeOutAnimator?.cancel()
+            fadeOutAnimator = null
+            arrowDepthAnimator?.removeAllUpdateListeners()
+            arrowDepthAnimator?.cancel()
+            arrowDepthAnimator = null
+            ctaView?.let { wavingDaxController?.cancel(it) }
+            ctaView?.animate()?.cancel()
+        }
+
+        override fun clearDialog() {
+            ctaView?.let { view ->
+                view.findViewById<DaxTypeAnimationTextView>(R.id.brandDesignTitle)?.apply {
+                    alpha = 1f
+                    text = ""
+                }
+                view.findViewById<DaxTextView>(R.id.brandDesignDescription)?.alpha = 0f
+                view.findViewById<View>(R.id.brandDesignDismissButton)?.alpha = 0f
+                // Hide all content includes — include-level alpha/gone is sufficient;
+                // children don't need individual alpha management since the parent
+                // include's alpha controls their composite visibility.
+                getAllContentIncludes(view).forEach { include ->
+                    include.alpha = 0f
+                    include.gone()
+                }
+            }
+        }
+
+        override fun setOnDismissCtaClicked(onButtonClicked: () -> Unit) {
+            ctaView?.findViewById<View>(R.id.brandDesignDismissButton)?.setOnClickListener {
+                onButtonClicked.invoke()
+            }
+        }
+
+        override fun setOnOptionClicked(
+            onboardingExperimentEnabled: Boolean,
+            configuration: DaxBubbleCta?,
+            onOptionClicked: (DaxDialogIntroOption, index: Int?) -> Unit,
+        ) {
+            // No-op by default. Subclasses with option buttons override this.
+        }
+    }
 
     data class DaxIntroVisitSiteOptionsCta(
         override val onboardingStore: OnboardingStore,
@@ -1705,39 +2091,30 @@ sealed class DaxBubbleCta(
         ctaPixelParam = Pixel.PixelValues.DAX_END_CTA,
         onboardingStore = onboardingStore,
         appInstallStore = appInstallStore,
-    ) {
-        // Only used by BB onboarding experiment
-        fun hideBBEndCta(onAnimationEnd: () -> Unit) {
-            val binding = IncludeOnboardingBubbleBbDialogBinding.bind(ctaView!!)
+    )
 
-            binding.root
-                .animate()
-                .alpha(0f)
-                .setInterpolator(FastOutSlowInInterpolator())
-                .withEndAction {
-                    onAnimationEnd()
-                }
-        }
-    }
-
-    data class DaxPrivacyProCta(
+    data class DaxSubscriptionCta(
         override val onboardingStore: OnboardingStore,
         override val appInstallStore: AppInstallStore,
-        val titleRes: Int,
-        val descriptionRes: Int,
-        val primaryCtaRes: Int,
+        val isFreeTrialCopy: Boolean,
     ) : DaxBubbleCta(
         ctaId = CtaId.DAX_INTRO_PRIVACY_PRO,
-        title = titleRes,
-        description = descriptionRes,
-        placeholder = com.duckduckgo.mobile.android.R.drawable.ic_privacy_pro_128,
-        primaryCta = primaryCtaRes,
+        title = R.string.onboardingPrivacyProDaxDialogTitle,
+        description = R.string.onboardingPrivacyProDaxDialogDescription,
+        placeholder = DesignSystemR.drawable.ic_privacy_pro_128,
+        primaryCta = if (isFreeTrialCopy) {
+            R.string.onboardingPrivacyProDaxDialogFreeTrialOkButton
+        } else {
+            R.string.onboardingPrivacyProDaxDialogOkButton
+        },
         shownPixel = AppPixelName.ONBOARDING_DAX_CTA_SHOWN,
         okPixel = AppPixelName.ONBOARDING_DAX_CTA_OK_BUTTON,
-        ctaPixelParam = Pixel.PixelValues.DAX_PRIVACY_PRO,
+        ctaPixelParam = Pixel.PixelValues.DAX_SUBSCRIPTION,
         onboardingStore = onboardingStore,
         appInstallStore = appInstallStore,
-    )
+    ) {
+        override fun shouldDropAddressBarFocusWhenShown(): Boolean = true
+    }
 
     data class DaxDialogIntroOption(
         val optionText: String,
@@ -1780,8 +2157,9 @@ sealed class HomePanelCta(
 
     override fun pixelShownParameters(): Map<String, String> = emptyMap()
 
-    // Base class to hold the shared configuration. This is temporary, for an experiment.
-    open class AddWidgetAutoBase :
+    override fun shouldDropAddressBarFocusWhenShown(): Boolean = true
+
+    data object AddWidgetAutoOnboarding :
         HomePanelCta(
             CtaId.ADD_WIDGET,
             R.drawable.add_widget_cta_icon,
@@ -1793,10 +2171,6 @@ sealed class HomePanelCta(
             AppPixelName.WIDGET_CTA_LAUNCHED,
             AppPixelName.WIDGET_CTA_DISMISSED,
         )
-
-    data object AddWidgetAuto : AddWidgetAutoBase()
-
-    data object AddWidgetAutoOnboardingExperiment : AddWidgetAutoBase()
 
     data object AddWidgetInstructions : HomePanelCta(
         CtaId.ADD_WIDGET,
@@ -1843,7 +2217,50 @@ class BrokenSitePromptDialogCta : Cta {
     }
 }
 
-fun DaxCta.addCtaToHistory(newCta: String): String {
+enum class SubscriptionPromoFlow(
+    val origin: String,
+    val shownPixel: Pixel.PixelName,
+    val subscribeClickPixel: Pixel.PixelName,
+) {
+    SKIPPED_ONBOARDING(
+        "funnel_modal_android__skippedonboardingupsell",
+        AppPixelName.SUBSCRIPTION_PROMO_MODAL_SKIPPED_ONBOARDING_SHOWN,
+        AppPixelName.SUBSCRIPTION_PROMO_MODAL_SKIPPED_ONBOARDING_SUBSCRIBE_CLICKED,
+    ),
+    NUDGE(
+        "funnel_modal_android__subscriptionnudge",
+        AppPixelName.SUBSCRIPTION_PROMO_MODAL_NUDGE_SHOWN,
+        AppPixelName.SUBSCRIPTION_PROMO_MODAL_NUDGE_SUBSCRIBE_CLICKED,
+    ),
+}
+
+class SubscriptionPromoModalCta(
+    val isFreeTrialCopy: Boolean,
+    val flow: SubscriptionPromoFlow,
+) : Cta {
+    override val ctaId: CtaId = CtaId.DAX_INTRO_PRIVACY_PRO
+    override val shownPixel: Pixel.PixelName = AppPixelName.ONBOARDING_DAX_CTA_SHOWN
+    override val okPixel: Pixel.PixelName = AppPixelName.ONBOARDING_DAX_CTA_OK_BUTTON
+    override val cancelPixel: Pixel.PixelName = AppPixelName.ONBOARDING_DAX_CTA_DISMISS_BUTTON
+    override val closePixel: Pixel.PixelName? = null
+
+    private fun pixelParams(): Map<String, String> = mapOf(
+        Pixel.PixelParameter.CTA_SHOWN to Pixel.PixelValues.MODAL_SUBSCRIPTION_CTA,
+        Pixel.PixelParameter.FREE_TRIAL to isFreeTrialCopy.toString(),
+    )
+
+    override fun pixelShownParameters(): Map<String, String> = pixelParams()
+    override fun pixelOkParameters(): Map<String, String> = pixelParams()
+    override fun pixelCancelParameters(): Map<String, String> = pixelParams()
+
+    override fun shouldDropAddressBarFocusWhenShown(): Boolean = true
+}
+
+fun addCtaToHistory(
+    onboardingStore: OnboardingStore,
+    appInstallStore: AppInstallStore,
+    newCta: String,
+): String {
     val param =
         onboardingStore.onboardingDialogJourney
             ?.split("-")
@@ -1856,7 +2273,13 @@ fun DaxCta.addCtaToHistory(newCta: String): String {
     return finalParam
 }
 
-fun DaxCta.canSendShownPixel(): Boolean {
+fun DaxCta.addCtaToHistory(newCta: String): String =
+    addCtaToHistory(onboardingStore, appInstallStore, newCta)
+
+fun canSendShownPixel(
+    onboardingStore: OnboardingStore,
+    ctaPixelParam: String,
+): Boolean {
     val param =
         onboardingStore.onboardingDialogJourney
             ?.split("-")
@@ -1864,6 +2287,9 @@ fun DaxCta.canSendShownPixel(): Boolean {
             .toMutableList()
     return !(param.isNotEmpty() && param.any { it.split(":").firstOrNull().orEmpty() == ctaPixelParam })
 }
+
+fun DaxCta.canSendShownPixel(): Boolean =
+    canSendShownPixel(onboardingStore, ctaPixelParam)
 
 fun String.getStringForOmnibarPosition(position: OmnibarType): String =
     when (position) {

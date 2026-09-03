@@ -16,6 +16,7 @@
 
 package com.duckduckgo.app
 
+import com.duckduckgo.app.browser.omnibar.OmnibarType
 import com.duckduckgo.app.fire.fireproofwebsite.ui.AutomaticFireproofSetting
 import com.duckduckgo.app.fire.fireproofwebsite.ui.AutomaticFireproofSetting.ASK_EVERY_TIME
 import com.duckduckgo.app.icon.api.AppIcon
@@ -24,7 +25,6 @@ import com.duckduckgo.app.settings.clear.ClearWhenOption
 import com.duckduckgo.app.settings.clear.FireAnimation
 import com.duckduckgo.app.settings.db.SettingsDataStore
 import com.duckduckgo.browser.api.autocomplete.AutoCompleteSettings
-import com.duckduckgo.browser.ui.omnibar.OmnibarType
 
 class FakeSettingsDataStore :
     SettingsDataStore,
@@ -132,6 +132,22 @@ class FakeSettingsDataStore :
             store["appBackgroundedTimestamp"] = value
         }
 
+    override var lastSessionBackgroundTimestamp: Long
+        get() = store["lastSessionBackgroundTimestamp"] as Long? ?: 0L
+        set(value) {
+            store["lastSessionBackgroundTimestamp"] = value
+        }
+
+    override var userSelectedIdleThresholdSeconds: Long?
+        get() = store["userSelectedIdleThresholdSeconds"] as Long?
+        set(value) {
+            if (value == null) {
+                store.remove("userSelectedIdleThresholdSeconds")
+            } else {
+                store["userSelectedIdleThresholdSeconds"] = value
+            }
+        }
+
     override var appNotificationsEnabled: Boolean
         get() = store["appNotificationsEnabled"] as Boolean? ?: true
         set(value) {
@@ -192,10 +208,62 @@ class FakeSettingsDataStore :
             store["isFullUrlEnabled"] = value
         }
 
+    override var urlPreferenceMigrated: Boolean
+        get() = store["urlPreferenceMigrated"] as Boolean? ?: false
+        set(value) {
+            store["urlPreferenceMigrated"] = value
+        }
+
+    override var urlPreferenceSetByUser: Boolean
+        get() = store["urlPreferenceManuallySet"] as Boolean? ?: false
+        set(value) {
+            store["urlPreferenceManuallySet"] = value
+        }
+
+    override fun hasUrlPreferenceSet(): Boolean {
+        return store.containsKey("isFullUrlEnabled")
+    }
+
     override var clearDuckAiData: Boolean
         get() = store["clearDuckAiData"] as Boolean? ?: false
         set(value) {
             store["clearDuckAiData"] = value
+        }
+
+    override var showTrackersCountInAddressBar: Boolean
+        get() = store["showTrackersCountInAddressBar"] as Boolean? ?: true
+        set(value) {
+            store["showTrackersCountInAddressBar"] = value
+        }
+
+    override var singleTabFireDialogShownCount: Int
+        get() = store["singleTabFireDialogShownCount"] as Int? ?: 0
+        set(value) {
+            store["singleTabFireDialogShownCount"] = value
+        }
+
+    override var getDesktopBrowserSettingDismissed: Boolean
+        get() = store["getDesktopBrowserSettingDismissed"] as Boolean? ?: false
+        set(value) {
+            store["getDesktopBrowserSettingDismissed"] = value
+        }
+
+    override var nextStepsAddressBarDismissed: Boolean
+        get() = store["nextStepsAddressBarDismissed"] as Boolean? ?: false
+        set(value) {
+            store["nextStepsAddressBarDismissed"] = value
+        }
+
+    override var nextStepsVoiceSearchDismissed: Boolean
+        get() = store["nextStepsVoiceSearchDismissed"] as Boolean? ?: false
+        set(value) {
+            store["nextStepsVoiceSearchDismissed"] = value
+        }
+
+    override var nextStepsSectionHidden: Boolean
+        get() = store["nextStepsSectionHidden"] as Boolean? ?: false
+        set(value) {
+            store["nextStepsSectionHidden"] = value
         }
 
     override fun isCurrentlySelected(clearWhatOption: ClearWhatOption): Boolean {

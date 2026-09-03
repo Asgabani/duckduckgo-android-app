@@ -17,6 +17,7 @@
 package com.duckduckgo.pir.impl.dashboard.state
 
 import com.duckduckgo.common.utils.CurrentTimeProvider
+import com.duckduckgo.pir.impl.common.hasMatchingProfileOnParent
 import com.duckduckgo.pir.impl.dashboard.state.PirDashboardInitialScanStateProvider.DashboardBrokerWithStatus
 import com.duckduckgo.pir.impl.dashboard.state.PirDashboardInitialScanStateProvider.DashboardBrokerWithStatus.Status.COMPLETED
 import com.duckduckgo.pir.impl.dashboard.state.PirDashboardInitialScanStateProvider.DashboardBrokerWithStatus.Status.IN_PROGRESS
@@ -32,9 +33,10 @@ abstract class PirDashboardStateProvider(
     private val pirRepository: PirRepository,
     private val pirSchedulingRepository: PirSchedulingRepository,
 ) {
-    suspend fun getAllExtractedProfileResults(): List<DashboardExtractedProfileResult> {
+    suspend fun getAllExtractedProfileResults(includeResultsForDeprecatedProfileQueries: Boolean): List<DashboardExtractedProfileResult> {
+        val nonDeprecatedProfileQueries = pirRepository.getValidUserProfileQueries().map { it.id }.toSet()
         val extractedProfiles = pirRepository.getAllExtractedProfiles().filter {
-            !it.deprecated
+            !it.deprecated && (includeResultsForDeprecatedProfileQueries || it.profileQueryId in nonDeprecatedProfileQueries)
         }
         val extractedProfilesFromBrokers = getAllExtractedProfileResultForBrokers(extractedProfiles)
         val extractedProfilesFromMirrorSites = extractedProfilesFromBrokers.getMirrorSites(
@@ -130,14 +132,26 @@ abstract class PirDashboardStateProvider(
         // Consider only active brokers and ignore removed ones
         val activeBrokerMap = pirRepository.getAllActiveBrokerObjects().associateBy { it.name }
         val brokerOptOutUrls = pirRepository.getAllBrokerOptOutUrls()
-        val optOutMap = pirSchedulingRepository.getAllValidOptOutJobRecords().associateBy {
-            it.extractedProfileId
-        }
+        val allValidOptOutJobs = pirSchedulingRepository.getAllValidOptOutJobRecords()
+        val optOutMap = allValidOptOutJobs.associateBy { it.extractedProfileId }
+        // Child brokers don't run their own form submission; they inherit the parent broker's most recent timestamp.
+        // Keyed by broker URL because Broker.parent references the parent's URL, not its name.
+        val mostRecentFormSubmittedByBrokerUrl: Map<String, Long> = allValidOptOutJobs
+            .mapNotNull { job ->
+                val date = job.optOutFormSubmittedDateInMillis ?: return@mapNotNull null
+                val url = activeBrokerMap[job.brokerName]?.url ?: return@mapNotNull null
+                url to date
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, dates) -> dates.max() }
 
         // Transform every extracted profile that is not deprecated and belongs to an active broker
         return extractedProfiles.mapNotNull { extractedProfile ->
             val broker = activeBrokerMap[extractedProfile.brokerName] ?: return@mapNotNull null
             val optOutJob = optOutMap[extractedProfile.dbId]
+            val optOutFormSubmittedDateInMillis = broker.parent?.let { parentUrl ->
+                mostRecentFormSubmittedByBrokerUrl[parentUrl]
+            } ?: optOutJob?.optOutFormSubmittedDateInMillis
 
             DashboardExtractedProfileResult(
                 extractedProfile = extractedProfile,
@@ -148,6 +162,7 @@ abstract class PirDashboardStateProvider(
                     optOutUrl = brokerOptOutUrls[broker.name],
                 ),
                 optOutSubmittedDateInMillis = optOutJob?.optOutRequestedDateInMillis,
+                optOutFormSubmittedDateInMillis = optOutFormSubmittedDateInMillis,
                 optOutRemovedDateInMillis = optOutJob?.optOutRemovedDateInMillis,
                 estimatedRemovalDateInMillis = getEstimatedRemovalDateInMillis(
                     optOutJob?.optOutRequestedDateInMillis ?: 0L,
@@ -174,40 +189,17 @@ abstract class PirDashboardStateProvider(
                 dashboardResultMap[mirrorSite.parentSite] ?: return@mapNotNull null
 
             parentBrokerResults.map { result ->
-                DashboardExtractedProfileResult(
-                    extractedProfile = result.extractedProfile,
+                result.copy(
                     broker = DashboardBroker(
                         name = mirrorSite.name,
                         url = mirrorSite.url,
                         parentUrl = result.broker.url,
                         optOutUrl = mirrorSite.optOutUrl,
                     ),
-                    optOutSubmittedDateInMillis = result.optOutSubmittedDateInMillis,
-                    optOutRemovedDateInMillis = result.optOutRemovedDateInMillis,
-                    estimatedRemovalDateInMillis = result.estimatedRemovalDateInMillis,
-                    hasMatchingRecordOnParentBroker = mirrorSite.parentSite.let {
-                        result.extractedProfile.hasMatchingProfileOnParent(extractedProfiles)
-                    },
+                    hasMatchingRecordOnParentBroker = result.extractedProfile.hasMatchingProfileOnParent(extractedProfiles),
                 )
             }
         }.flatten()
-    }
-
-    private fun ExtractedProfile.hasMatchingProfileOnParent(extractedProfiles: List<ExtractedProfile>): Boolean {
-        return extractedProfiles.any {
-            it.brokerName == this.brokerName && this.matches(it)
-        }
-    }
-
-    private fun ExtractedProfile.matches(extractedProfile: ExtractedProfile): Boolean {
-        return this.name == extractedProfile.name && this.age == extractedProfile.age &&
-            this.alternativeNames.isASubSetOrSuperSetOf(extractedProfile.alternativeNames) &&
-            this.relatives.isASubSetOrSuperSetOf(extractedProfile.relatives) &&
-            this.addresses.isASubSetOrSuperSetOf(extractedProfile.addresses)
-    }
-
-    private fun <T> List<T>.isASubSetOrSuperSetOf(other: List<T>): Boolean {
-        return this.containsAll(other) || other.containsAll(this)
     }
 
     private fun getEstimatedRemovalDateInMillis(

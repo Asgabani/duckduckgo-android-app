@@ -25,17 +25,16 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import androidx.core.net.toUri
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.duckduckgo.adblocking.api.duckplayer.DuckPlayer
 import com.duckduckgo.app.browser.SpecialUrlDetector.UrlType.*
 import com.duckduckgo.app.browser.SpecialUrlDetectorImpl.Companion.EMAIL_MAX_LENGTH
 import com.duckduckgo.app.browser.SpecialUrlDetectorImpl.Companion.PHONE_MAX_LENGTH
 import com.duckduckgo.app.browser.SpecialUrlDetectorImpl.Companion.SMS_MAX_LENGTH
+import com.duckduckgo.app.browser.applinks.AppSchemeInterceptionFeature
 import com.duckduckgo.app.browser.applinks.ExternalAppIntentFlagsFeature
-import com.duckduckgo.app.browser.duckchat.AIChatQueryDetectionFeature
-import com.duckduckgo.app.pixels.remoteconfig.AndroidBrowserConfigFeature
+import com.duckduckgo.browser.feature.toggles.AndroidBrowserConfigFeature
 import com.duckduckgo.duckchat.api.DuckChat
-import com.duckduckgo.duckplayer.api.DuckPlayer
 import com.duckduckgo.feature.toggles.api.FakeFeatureToggleFactory
-import com.duckduckgo.feature.toggles.api.Toggle
 import com.duckduckgo.feature.toggles.api.Toggle.State
 import com.duckduckgo.privacy.config.api.AmpLinkType
 import com.duckduckgo.privacy.config.api.AmpLinks
@@ -73,11 +72,10 @@ class SpecialUrlDetectorImplTest {
 
     val mockDuckChat: DuckChat = mock()
 
-    val mockAIChatQueryDetectionFeature: AIChatQueryDetectionFeature = mock()
-
-    val mockAIChatQueryDetectionFeatureToggle: Toggle = mock()
-
     val androidBrowserConfigFeature: AndroidBrowserConfigFeature = FakeFeatureToggleFactory.create(AndroidBrowserConfigFeature::class.java)
+
+    val appSchemeInterceptionFeature: AppSchemeInterceptionFeature =
+        FakeFeatureToggleFactory.create(AppSchemeInterceptionFeature::class.java)
 
     @Before
     fun setup() = runTest {
@@ -90,14 +88,12 @@ class SpecialUrlDetectorImplTest {
                 externalAppIntentFlagsFeature = externalAppIntentFlagsFeature,
                 duckPlayer = mockDuckPlayer,
                 duckChat = mockDuckChat,
-                aiChatQueryDetectionFeature = mockAIChatQueryDetectionFeature,
                 androidBrowserConfigFeature = androidBrowserConfigFeature,
+                appSchemeInterceptionFeature = appSchemeInterceptionFeature,
             ),
         )
         whenever(mockPackageManager.queryIntentActivities(any(), anyInt())).thenReturn(emptyList())
         whenever(mockDuckPlayer.willNavigateToDuckPlayer(any())).thenReturn(false)
-        whenever(mockAIChatQueryDetectionFeatureToggle.isEnabled()).thenReturn(false)
-        whenever(mockAIChatQueryDetectionFeature.self()).thenReturn(mockAIChatQueryDetectionFeatureToggle)
         androidBrowserConfigFeature.handleIntentScheme().setRawStoredState(State(true))
         androidBrowserConfigFeature.validateIntentResolution().setRawStoredState(State(true))
     }
@@ -353,37 +349,28 @@ class SpecialUrlDetectorImplTest {
     }
 
     @Test
-    fun whenUrlIsNotPrivacyProThenQueryTypeDetected() {
-        whenever(subscriptions.shouldLaunchPrivacyProForUrl(any())).thenReturn(false)
+    fun whenUrlIsNotSubscriptionThenQueryTypeDetected() {
+        whenever(subscriptions.shouldLaunchSubscriptionForUrl(any())).thenReturn(false)
         val result = testee.determineType("duckduckgo.com")
         assertTrue(result is SearchQuery)
     }
 
     @Test
-    fun whenUrlIsPrivacyProThenPrivacyProTypeDetected() {
-        whenever(subscriptions.shouldLaunchPrivacyProForUrl(any())).thenReturn(true)
+    fun whenUrlIsSubscriptionThenSubscriptionTypeDetected() {
+        whenever(subscriptions.shouldLaunchSubscriptionForUrl(any())).thenReturn(true)
         val result = testee.determineType("duckduckgo.com")
-        assertTrue(result is ShouldLaunchPrivacyProLink)
+        assertTrue(result is ShouldLaunchSubscriptionLink)
     }
 
     @Test
-    fun whenUrlIsNotDuckChatUrlAndFeatureIsEnabledThenSearchQueryTypeDetected() {
-        whenever(mockAIChatQueryDetectionFeatureToggle.isEnabled()).thenReturn(true)
+    fun whenUrlIsNotDuckChatUrlThenSearchQueryTypeDetected() {
         whenever(mockDuckChat.isDuckChatUrl(any())).thenReturn(false)
         val result = testee.determineType("duckduckgo.com")
         assertTrue(result is SearchQuery)
     }
 
     @Test
-    fun whenUrlIsDuckChatUrlAndFeatureIsEnabledThenDuckChatTypeDetected() {
-        whenever(mockAIChatQueryDetectionFeatureToggle.isEnabled()).thenReturn(true)
-        whenever(mockDuckChat.isDuckChatUrl(any())).thenReturn(true)
-        val result = testee.determineType("duckduckgo.com")
-        assertTrue(result is ShouldLaunchDuckChatLink)
-    }
-
-    @Test
-    fun whenUrlIsDuckChatUrlAndFeatureIsDisabledThenSearchQueryTypeDetected() {
+    fun whenUrlIsDuckChatUrlThenSearchQueryTypeDetected() {
         whenever(mockDuckChat.isDuckChatUrl(any())).thenReturn(true)
         val result = testee.determineType("duckduckgo.com")
         assertTrue(result is SearchQuery)
@@ -520,42 +507,12 @@ class SpecialUrlDetectorImplTest {
     }
 
     @Test
-    fun whenUrlIsPrivacyProThenPrivacyProLinkDetected() {
-        whenever(subscriptions.shouldLaunchPrivacyProForUrl(any())).thenReturn(true)
+    fun whenUrlIsSubscriptionThenSubscriptionLinkDetected() {
+        whenever(subscriptions.shouldLaunchSubscriptionForUrl(any())).thenReturn(true)
 
         val actual =
             testee.determineType(initiatingUrl = "https://www.example.com", uri = "https://www.example.com".toUri())
-        assertTrue(actual is ShouldLaunchPrivacyProLink)
-    }
-
-    @Test
-    fun whenIsDuckChatUrlThenReturnShouldLaunchDuckChatLink() = runTest {
-        whenever(mockDuckChat.isDuckChatUrl(any())).thenReturn(true)
-        val type = testee.determineType("https://duck.ai")
-        whenever(mockPackageManager.resolveActivity(any(), eq(PackageManager.MATCH_DEFAULT_ONLY))).thenReturn(null)
-        whenever(mockPackageManager.queryIntentActivities(any(), anyInt())).thenReturn(
-            listOf(
-                buildAppResolveInfo(),
-                buildBrowserResolveInfo(),
-                ResolveInfo(),
-            ),
-        )
-        assertTrue(type is ShouldLaunchDuckChatLink)
-    }
-
-    @Test
-    fun whenIsNotDuckChatUrlThenDoNotReturnShouldLaunchDuckChatLink() = runTest {
-        whenever(mockDuckChat.isDuckChatUrl(any())).thenReturn(false)
-        val type = testee.determineType("https://example.com")
-        whenever(mockPackageManager.resolveActivity(any(), eq(PackageManager.MATCH_DEFAULT_ONLY))).thenReturn(null)
-        whenever(mockPackageManager.queryIntentActivities(any(), anyInt())).thenReturn(
-            listOf(
-                buildAppResolveInfo(),
-                buildBrowserResolveInfo(),
-                ResolveInfo(),
-            ),
-        )
-        assertTrue(type !is ShouldLaunchDuckChatLink)
+        assertTrue(actual is ShouldLaunchSubscriptionLink)
     }
 
     @Test
@@ -617,6 +574,42 @@ class SpecialUrlDetectorImplTest {
 
         assertTrue(result is NonHttpAppLink)
         assertEquals("myapp:foo bar", (result as NonHttpAppLink).uriString)
+    }
+
+    @Test
+    fun whenValidateIntentResolutionEnabledAndNoResolveInfoButHasFallbackUrlThenReturnNonHttpAppLinkWithFallback() {
+        androidBrowserConfigFeature.validateIntentResolution().setRawStoredState(State(true))
+        whenever(mockPackageManager.resolveActivity(any(), anyInt())).thenReturn(null)
+
+        val intentUrl = "intent://open/#Intent;scheme=myapp;package=com.example;S.browser_fallback_url=https%3A%2F%2Fexample.com;end"
+        val result = testee.determineType(intentUrl)
+
+        assertTrue(result is NonHttpAppLink)
+        val nonHttpAppLink = result as NonHttpAppLink
+        assertEquals("https://example.com", nonHttpAppLink.fallbackUrl)
+    }
+
+    @Test
+    fun whenAppSchemeInterceptionDisabledAndNoResolveInfoButHasFallbackUrlThenReturnUnknown() {
+        androidBrowserConfigFeature.validateIntentResolution().setRawStoredState(State(true))
+        appSchemeInterceptionFeature.self().setRawStoredState(State(false))
+        whenever(mockPackageManager.resolveActivity(any(), anyInt())).thenReturn(null)
+
+        val intentUrl = "intent://open/#Intent;scheme=myapp;package=com.example;S.browser_fallback_url=https%3A%2F%2Fexample.com;end"
+        val result = testee.determineType(intentUrl)
+
+        assertTrue(result is Unknown)
+    }
+
+    @Test
+    fun whenValidateIntentResolutionEnabledAndNoResolveInfoAndNoFallbackUrlThenReturnUnknown() {
+        androidBrowserConfigFeature.validateIntentResolution().setRawStoredState(State(true))
+        whenever(mockPackageManager.resolveActivity(any(), anyInt())).thenReturn(null)
+
+        val intentUrl = "intent://open/#Intent;scheme=myapp;package=com.example;end"
+        val result = testee.determineType(intentUrl)
+
+        assertTrue(result is Unknown)
     }
 
     private fun randomString(length: Int): String {

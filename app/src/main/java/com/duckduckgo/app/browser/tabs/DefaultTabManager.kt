@@ -21,6 +21,7 @@ import com.duckduckgo.app.browser.omnibar.OmnibarEntryConverter
 import com.duckduckgo.app.browser.tabs.TabManager.TabModel
 import com.duckduckgo.app.tabs.model.TabEntity
 import com.duckduckgo.app.tabs.model.TabRepository
+import com.duckduckgo.browsermode.api.BrowserMode
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.ActivityScope
 import com.squareup.anvil.annotations.ContributesBinding
@@ -32,12 +33,12 @@ import javax.inject.Inject
 
 interface TabManager {
     companion object {
-        const val MAX_ACTIVE_TABS = 20
+        const val MAX_ACTIVE_TABS = 15
     }
 
     fun registerCallbacks(onTabsUpdated: (List<TabModel>) -> Unit)
     fun getSelectedTabId(): String?
-    fun onSelectedTabChanged(tabId: String)
+    suspend fun onSelectedTabChanged(tabId: String)
 
     suspend fun onTabsChanged(updatedTabIds: List<TabModel>)
     suspend fun switchToTab(tabId: String)
@@ -48,6 +49,7 @@ interface TabManager {
         val tabId: String,
         val url: String?,
         val skipHome: Boolean,
+        val sourceTabId: String?,
     )
 }
 
@@ -58,6 +60,7 @@ class DefaultTabManager @Inject constructor(
     private val dispatchers: DispatcherProvider,
     private val queryUrlConverter: OmnibarEntryConverter,
     private val skipUrlConversionOnNewTabFeature: SkipUrlConversionOnNewTabFeature,
+    private val browserMode: BrowserMode,
 ) : TabManager {
     private lateinit var onTabsUpdated: (List<TabModel>) -> Unit
     private var selectedTabId: String? = null
@@ -68,14 +71,21 @@ class DefaultTabManager @Inject constructor(
 
     override fun getSelectedTabId(): String? = selectedTabId
 
-    override fun onSelectedTabChanged(tabId: String) {
+    override suspend fun onSelectedTabChanged(tabId: String) {
         selectedTabId = tabId
+        withContext(dispatchers.io()) {
+            tabRepository.updateTabLastAccess(tabId)
+        }
     }
 
     override suspend fun onTabsChanged(updatedTabIds: List<TabModel>) {
         onTabsUpdated(updatedTabIds)
 
         if (updatedTabIds.isEmpty()) {
+            // Fire mode never seeds a tab implicitly
+            if (browserMode == BrowserMode.FIRE) {
+                return
+            }
             withContext(dispatchers.io()) {
                 logcat(INFO) { "Tabs list is null or empty; adding default tab" }
                 tabRepository.addDefaultTab()

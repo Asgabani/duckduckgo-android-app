@@ -21,7 +21,7 @@ import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import app.cash.turbine.test
 import com.duckduckgo.app.browser.commands.Command
 import com.duckduckgo.app.browser.menu.VpnMenuStateProvider
-import com.duckduckgo.app.browser.viewstate.VpnMenuState
+import com.duckduckgo.browser.ui.browsermenu.VpnMenuState
 import com.duckduckgo.common.test.CoroutineTestRule
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -119,7 +119,7 @@ class BrowserTabViewModelVpnMenuTest {
         }
 
     @Test
-    fun `when VPN menu clicked and user not subscribed then launches Privacy Pro command`() =
+    fun `when VPN menu clicked and user not subscribed then launches subscription command`() =
         runTest {
             testee.setVpnMenuState(VpnMenuState.NotSubscribed)
 
@@ -127,7 +127,7 @@ class BrowserTabViewModelVpnMenuTest {
 
             testee.commands.test {
                 val command = awaitItem()
-                assertTrue("Expected LaunchPrivacyPro command", command is Command.LaunchPrivacyPro)
+                assertTrue("Expected LaunchSubscription command", command is Command.LaunchSubscription)
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -189,11 +189,11 @@ class BrowserTabViewModelVpnMenuTest {
             when (currentVpnMenuState) {
                 VpnMenuState.NotSubscribed -> {
                     val mockUri = org.mockito.kotlin.mock<Uri>()
-                    _commands.tryEmit(Command.LaunchPrivacyPro(mockUri))
+                    _commands.tryEmit(Command.LaunchSubscription(mockUri))
                 }
                 VpnMenuState.NotSubscribedNoPill -> {
                     val mockUri = org.mockito.kotlin.mock<Uri>()
-                    _commands.tryEmit(Command.LaunchPrivacyPro(mockUri))
+                    _commands.tryEmit(Command.LaunchSubscription(mockUri))
                 }
                 is VpnMenuState.Subscribed -> {
                     _commands.tryEmit(Command.LaunchVpnManagement)

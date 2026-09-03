@@ -22,7 +22,12 @@ import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.common.utils.extractDomain
 import com.duckduckgo.di.scopes.AppScope
 import com.duckduckgo.site.permissions.api.SitePermissionsManager.LocationPermissionRequest
+import com.duckduckgo.site.permissions.impl.drm.DrmPolicyAction
+import com.duckduckgo.site.permissions.impl.drm.DrmPolicyManager
+import com.duckduckgo.site.permissions.impl.drm.DrmSessionStore
 import com.duckduckgo.site.permissions.impl.drmblock.DrmBlock
+import com.duckduckgo.site.permissions.impl.feature.DrmPolicyFeature
+import com.duckduckgo.site.permissions.impl.feature.isCentralPolicyEnabled
 import com.duckduckgo.site.permissions.store.SitePermissionsPreferences
 import com.duckduckgo.site.permissions.store.sitepermissions.SitePermissionAskSettingType
 import com.duckduckgo.site.permissions.store.sitepermissions.SitePermissionsDao
@@ -30,6 +35,7 @@ import com.duckduckgo.site.permissions.store.sitepermissions.SitePermissionsEnti
 import com.duckduckgo.site.permissions.store.sitepermissionsallowed.SitePermissionAllowedEntity
 import com.duckduckgo.site.permissions.store.sitepermissionsallowed.SitePermissionsAllowedDao
 import com.squareup.anvil.annotations.ContributesBinding
+import dagger.Lazy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -42,6 +48,7 @@ interface SitePermissionsRepository {
     var askMicEnabled: Boolean
     var askDrmEnabled: Boolean
     var askLocationEnabled: Boolean
+    suspend fun isDrmEnabledForSite(url: String): Boolean
     suspend fun isDomainAllowedToAsk(url: String, permission: String): Boolean
     suspend fun isDomainGranted(url: String, tabId: String, permission: String): Boolean
     fun sitePermissionGranted(url: String, tabId: String, permission: String)
@@ -49,8 +56,8 @@ interface SitePermissionsRepository {
     fun sitePermissionsWebsitesFlow(): Flow<List<SitePermissionsEntity>>
     fun sitePermissionsForAllWebsites(): List<SitePermissionsEntity>
     fun sitePermissionsAllowedFlow(): Flow<List<SitePermissionAllowedEntity>>
-    fun getDrmForSession(domain: String): Boolean?
-    fun saveDrmForSession(domain: String, allowed: Boolean)
+    fun getDrmForSession(tabId: String, domain: String): Boolean?
+    fun saveDrmForSession(tabId: String, domain: String, allowed: Boolean)
     fun isDrmBlockedForUrlByConfig(url: String): Boolean
     suspend fun undoDeleteAll(sitePermissions: List<SitePermissionsEntity>, allowedSites: List<SitePermissionAllowedEntity>)
     suspend fun deleteAll()
@@ -68,6 +75,9 @@ class SitePermissionsRepositoryImpl @Inject constructor(
     @AppCoroutineScope private val appCoroutineScope: CoroutineScope,
     private val dispatcherProvider: DispatcherProvider,
     private val drmBlock: DrmBlock,
+    private val drmSessionStore: DrmSessionStore,
+    private val drmPolicyFeature: DrmPolicyFeature,
+    private val drmPolicyManager: Lazy<DrmPolicyManager>,
 ) : SitePermissionsRepository {
 
     override var askCameraEnabled: Boolean
@@ -93,7 +103,22 @@ class SitePermissionsRepositoryImpl @Inject constructor(
             sitePermissionsPreferences.askLocationEnabled = value
         }
 
+    // Kept for the flag-off path only; the shared DrmSessionStore replaces it once drmPolicy is fully rolled out.
     private val drmSessions = mutableMapOf<String, Boolean>()
+
+    override suspend fun isDrmEnabledForSite(url: String): Boolean {
+        if (withContext(dispatcherProvider.io()) { drmPolicyFeature.isCentralPolicyEnabled() }) {
+            // "Permitted or promptable" rather than "granted" — this feeds the breakage report's drmEnabled field.
+            return drmPolicyManager.get().decide(url).action != DrmPolicyAction.DENY
+        }
+
+        val domain = url.extractDomain() ?: url
+        drmSessions[domain]?.let { return it }
+        if (isDrmBlockedForUrlByConfig(url)) return false
+
+        return isDomainAllowedToAsk(url, PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID) ||
+            isDomainGranted(url, "", PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID)
+    }
 
     override suspend fun isDomainAllowedToAsk(url: String, permission: String): Boolean {
         val domain = url.extractDomain() ?: url
@@ -190,12 +215,20 @@ class SitePermissionsRepositoryImpl @Inject constructor(
         return sitePermissionsAllowedDao.getAllSitesPermissionsAllowedAsFlow()
     }
 
-    override fun getDrmForSession(domain: String): Boolean? {
-        return drmSessions[domain]
+    override fun getDrmForSession(tabId: String, domain: String): Boolean? {
+        return if (drmPolicyFeature.isCentralPolicyEnabled()) {
+            drmSessionStore.get(tabId, domain)
+        } else {
+            drmSessions[domain]
+        }
     }
 
-    override fun saveDrmForSession(domain: String, allowed: Boolean) {
-        drmSessions[domain] = allowed
+    override fun saveDrmForSession(tabId: String, domain: String, allowed: Boolean) {
+        if (drmPolicyFeature.isCentralPolicyEnabled()) {
+            drmSessionStore.save(tabId, domain, allowed)
+        } else {
+            drmSessions[domain] = allowed
+        }
     }
 
     override fun isDrmBlockedForUrlByConfig(url: String): Boolean {

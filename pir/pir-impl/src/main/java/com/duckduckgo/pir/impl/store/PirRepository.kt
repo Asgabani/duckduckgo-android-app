@@ -18,6 +18,8 @@ package com.duckduckgo.pir.impl.store
 
 import com.duckduckgo.common.utils.CurrentTimeProvider
 import com.duckduckgo.common.utils.DispatcherProvider
+import com.duckduckgo.pir.impl.common.refreshedWith
+import com.duckduckgo.pir.impl.common.toKey
 import com.duckduckgo.pir.impl.models.Address
 import com.duckduckgo.pir.impl.models.AddressCityState
 import com.duckduckgo.pir.impl.models.Broker
@@ -32,6 +34,7 @@ import com.duckduckgo.pir.impl.service.DbpService.PirEmailConfirmationDataReques
 import com.duckduckgo.pir.impl.service.DbpService.PirJsonBroker
 import com.duckduckgo.pir.impl.store.PirRepository.BrokerJson
 import com.duckduckgo.pir.impl.store.PirRepository.EmailConfirmationLinkFetchStatus
+import com.duckduckgo.pir.impl.store.PirRepository.GeneratedEmailData
 import com.duckduckgo.pir.impl.store.db.BrokerDao
 import com.duckduckgo.pir.impl.store.db.BrokerEntity
 import com.duckduckgo.pir.impl.store.db.BrokerJsonDao
@@ -47,6 +50,7 @@ import com.duckduckgo.pir.impl.store.db.UserProfile
 import com.duckduckgo.pir.impl.store.db.UserProfileDao
 import com.duckduckgo.pir.impl.store.secure.PirSecureStorageDatabaseFactory
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -68,11 +72,27 @@ interface PirRepository {
      */
     suspend fun isRepositoryAvailable(): Boolean
 
+    /**
+     * Returns the time in ms when the feature was first allowed to be run on the user's device. If the feature is not allowed to be run, we get 0L.
+     */
+    suspend fun getFeatureReceivedMs(): Long
+
+    /**
+     * Set the time in ms when the feature was first allowed to be run on the user's device
+     */
+    suspend fun setFeatureReceivedMs(long: Long)
+
     suspend fun getCurrentMainEtag(): String?
 
     suspend fun updateMainEtag(etag: String?)
 
     suspend fun updateBrokerJsons(brokers: List<BrokerJson>)
+
+    /**
+     * Clears all broker configuration: both the download etags and the parsed broker details
+     * (details, scan/optOut steps, scheduling config, mirror sites).
+     */
+    suspend fun clearAllBrokerData()
 
     suspend fun getAllLocalBrokerJsons(): List<BrokerJson>
 
@@ -81,6 +101,8 @@ interface PirRepository {
     suspend fun getAllActiveBrokers(): List<String>
 
     suspend fun getAllActiveBrokerObjects(): List<Broker>
+
+    suspend fun getAllBrokerObjects(): List<Broker>
 
     suspend fun getBrokerForName(name: String): Broker?
 
@@ -118,10 +140,13 @@ interface PirRepository {
     suspend fun getBrokersForOptOut(formOptOutOnly: Boolean): List<String>
 
     /**
-     * This method saves the new extracted profiles to the database.
-     * Any existing profiles (see indices of the table), we ignore them
+     * This method saves the extracted profiles to the database.
+     *
+     * Profiles we already store (see indices of the table) are refreshed with the newly scraped
+     * attributes, keeping their local id, date added and deprecated flag. Extras are merged into
+     * the stored extras so that a key missing from this scrape keeps the value we already hold.
      */
-    suspend fun saveNewExtractedProfiles(extractedProfiles: List<ExtractedProfile>)
+    suspend fun saveExtractedProfiles(extractedProfiles: List<ExtractedProfile>)
 
     /**
      * Returns a list of all [ExtractedProfile] found for this particular broker.
@@ -141,6 +166,8 @@ interface PirRepository {
     fun getAllExtractedProfilesFlow(): Flow<List<ExtractedProfile>>
 
     suspend fun getAllExtractedProfiles(): List<ExtractedProfile>
+
+    suspend fun markExtractedProfileAsDeprecated(extractedProfileId: Long)
 
     suspend fun getUserProfileQuery(id: Long): ProfileQuery?
 
@@ -167,11 +194,67 @@ interface PirRepository {
         profileQueryIdsToDelete: List<Long>,
     ): Boolean
 
-    suspend fun getEmailForBroker(dataBroker: String): String
+    suspend fun getEmailForBroker(dataBroker: String): GeneratedEmailData
 
     suspend fun getEmailConfirmationLinkStatus(emailData: List<EmailData>): Map<EmailData, EmailConfirmationLinkFetchStatus>
 
     suspend fun deleteEmailData(emailData: List<EmailData>)
+
+    suspend fun getCustomStatsPixelsLastSentMs(): Long
+
+    suspend fun setCustomStatsPixelsLastSentMs(timeMs: Long)
+
+    suspend fun getLastPirDauPixelTimeMs(): Long
+
+    suspend fun setLastPirDauPixelTimeMs(timeMs: Long)
+
+    suspend fun getLastPirWauPixelTimeMs(): Long
+
+    suspend fun setLastPirWauPixelTimeMs(timeMs: Long)
+
+    suspend fun getLastPirMauPixelTimeMs(): Long
+
+    suspend fun setLastPirMauPixelTimeMs(timeMs: Long)
+
+    suspend fun getLastPirInteractionDauPixelTimeMs(): Long
+
+    suspend fun setLastPirInteractionDauPixelTimeMs(timeMs: Long)
+
+    suspend fun getLastPirInteractionWauPixelTimeMs(): Long
+
+    suspend fun setLastPirInteractionWauPixelTimeMs(timeMs: Long)
+
+    suspend fun getLastPirInteractionMauPixelTimeMs(): Long
+
+    suspend fun setLastPirInteractionMauPixelTimeMs(timeMs: Long)
+
+    suspend fun getWeeklyStatLastSentMs(): Long
+
+    suspend fun setWeeklyStatLastSentMs(timeMs: Long)
+
+    suspend fun setHasBrokerConfigBeenManuallyUpdated(updated: Boolean)
+
+    suspend fun hasBrokerConfigBeenManuallyUpdated(): Boolean
+
+    suspend fun latestBackgroundScanRunInMs(): Long
+
+    suspend fun setLatestBackgroundScanRunInMs(timeMs: Long)
+
+    /**
+     * This method deletes all data in the PIR repository, including brokers, extracted profiles, user profiles and resets the data store.
+     */
+    suspend fun clearAllData()
+
+    /**
+     * This method deletes all data in the PIR repository that is related to the user: user profiles, extracted profiles and
+     * resets the user data in the data store.
+     */
+    suspend fun clearUserData()
+
+    data class GeneratedEmailData(
+        val emailAddress: String,
+        val pattern: String,
+    )
 
     data class BrokerJson(
         val fileName: String,
@@ -241,9 +324,22 @@ class RealPirRepository(
         prepareDatabase()
     }
 
-    private val addressCityStateAdapter by lazy { Moshi.Builder().build().adapter(AddressCityState::class.java) }
+    // Kotlin defaults are needed here so that addresses stored before a field was introduced still parse.
+    private val addressCityStateAdapter by lazy {
+        Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(AddressCityState::class.java)
+    }
 
     override suspend fun isRepositoryAvailable(): Boolean = database.await() != null
+
+    override suspend fun getFeatureReceivedMs(): Long = withContext(dispatcherProvider.io()) {
+        pirDataStore.featureReceivedMs
+    }
+
+    override suspend fun setFeatureReceivedMs(long: Long) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.featureReceivedMs = long
+        }
+    }
 
     override suspend fun getCurrentMainEtag(): String? = pirDataStore.mainConfigEtag
 
@@ -262,6 +358,13 @@ class RealPirRepository(
                 }.also {
                     brokerJsonDao()?.insertBrokerJsonEtags(it)
                 }
+        }
+    }
+
+    override suspend fun clearAllBrokerData() {
+        withContext(dispatcherProvider.io()) {
+            brokerJsonDao()?.deleteAll()
+            brokerDao()?.deleteAll()
         }
     }
 
@@ -289,32 +392,17 @@ class RealPirRepository(
 
     override suspend fun getAllActiveBrokerObjects(): List<Broker> =
         withContext(dispatcherProvider.io()) {
-            return@withContext brokerDao()?.getAllActiveBrokers()?.map {
-                Broker(
-                    name = it.name,
-                    fileName = it.fileName,
-                    url = it.url,
-                    version = it.version,
-                    parent = it.parent,
-                    addedDatetime = it.addedDatetime,
-                    removedAt = it.removedAt,
-                )
-            }.orEmpty()
+            return@withContext brokerDao()?.getAllActiveBrokers()?.map { it.toBroker() }.orEmpty()
+        }
+
+    override suspend fun getAllBrokerObjects(): List<Broker> =
+        withContext(dispatcherProvider.io()) {
+            return@withContext brokerDao()?.getAllBrokers()?.map { it.toBroker() }.orEmpty()
         }
 
     override suspend fun getBrokerForName(name: String): Broker? =
         withContext(dispatcherProvider.io()) {
-            return@withContext brokerDao()?.getBrokerDetails(name)?.let {
-                Broker(
-                    name = it.name,
-                    fileName = it.fileName,
-                    url = it.url,
-                    version = it.version,
-                    parent = it.parent,
-                    addedDatetime = it.addedDatetime,
-                    removedAt = it.removedAt,
-                )
-            }
+            return@withContext brokerDao()?.getBrokerDetails(name)?.toBroker()
         }
 
     override suspend fun getAllMirrorSitesForBroker(brokerName: String): List<MirrorSite> =
@@ -463,26 +551,40 @@ class RealPirRepository(
                 }.orEmpty()
         }
 
-    override suspend fun saveNewExtractedProfiles(extractedProfiles: List<ExtractedProfile>) {
+    override suspend fun saveExtractedProfiles(extractedProfiles: List<ExtractedProfile>) {
         withContext(dispatcherProvider.io()) {
             if (extractedProfiles.isEmpty()) {
                 return@withContext
             }
 
+            val db = database.await() ?: return@withContext
+            val userProfileDao = db.userProfileDao()
+            val dao = db.extractedProfileDao()
             val profileQueryId = extractedProfiles.first().profileQueryId
-            val profileQuery = userProfileDao()?.getUserProfile(profileQueryId)
-            if (profileQuery?.deprecated == true) {
-                // we should not store any new extracted profiles for a deprecated user profile
-                // also don't mark them as deprecated as we still want to show them on the UI
-                return@withContext
-            }
 
-            extractedProfiles
-                .map {
-                    it.toStoredExtractedProfile()
-                }.also {
-                    extractedProfileDao()?.insertNewExtractedProfiles(it)
+            db.runInTransaction {
+                if (userProfileDao.getUserProfile(profileQueryId)?.deprecated == true) {
+                    // we should not store any new extracted profiles for a deprecated user profile
+                    // also don't mark them as deprecated as we still want to show them on the UI
+                    return@runInTransaction
                 }
+
+                val storedProfiles = extractedProfiles
+                    .map { it.brokerName }
+                    .distinct()
+                    .flatMap { dao.getExtractedProfilesForBrokerAndProfile(it, profileQueryId) }
+                    .map { it.toExtractedProfile() }
+                    .associateBy { it.toKey() }
+
+                val (alreadyStored, newlyFound) = extractedProfiles.partition { it.toKey() in storedProfiles }
+
+                dao.insertNewExtractedProfiles(newlyFound.map { it.toStoredExtractedProfile() })
+                dao.updateExtractedProfiles(
+                    alreadyStored.map { scraped ->
+                        storedProfiles.getValue(scraped.toKey()).refreshedWith(scraped).toStoredExtractedProfile()
+                    },
+                )
+            }
         }
     }
 
@@ -525,6 +627,12 @@ class RealPirRepository(
                 it.toExtractedProfile()
             }.orEmpty()
         }
+
+    override suspend fun markExtractedProfileAsDeprecated(extractedProfileId: Long) {
+        withContext(dispatcherProvider.io()) {
+            extractedProfileDao()?.updateExtractedProfileDeprecated(extractedProfileId, deprecated = true)
+        }
+    }
 
     override suspend fun getUserProfileQuery(id: Long): ProfileQuery? =
         withContext(dispatcherProvider.io()) {
@@ -606,9 +714,14 @@ class RealPirRepository(
         }
     }
 
-    override suspend fun getEmailForBroker(dataBroker: String): String =
+    override suspend fun getEmailForBroker(dataBroker: String): GeneratedEmailData =
         withContext(dispatcherProvider.io()) {
-            return@withContext dbpService.getEmail(brokerDao()?.getBrokerDetails(dataBroker)!!.url).emailAddress
+            return@withContext dbpService.getEmail(brokerDao()?.getBrokerDetails(dataBroker)!!.url).run {
+                GeneratedEmailData(
+                    emailAddress,
+                    pattern,
+                )
+            }
         }
 
     override suspend fun getEmailConfirmationLinkStatus(emailData: List<EmailData>): Map<EmailData, EmailConfirmationLinkFetchStatus> =
@@ -652,6 +765,122 @@ class RealPirRepository(
             return@withContext
         }
 
+    override suspend fun getCustomStatsPixelsLastSentMs(): Long = withContext(dispatcherProvider.io()) {
+        pirDataStore.customStatsPixelsLastSentMs
+    }
+
+    override suspend fun setCustomStatsPixelsLastSentMs(timeMs: Long) = withContext(dispatcherProvider.io()) {
+        pirDataStore.customStatsPixelsLastSentMs = timeMs
+    }
+
+    override suspend fun getLastPirDauPixelTimeMs(): Long = withContext(dispatcherProvider.io()) {
+        return@withContext pirDataStore.dauLastSentMs
+    }
+
+    override suspend fun setLastPirDauPixelTimeMs(timeMs: Long) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.dauLastSentMs = timeMs
+        }
+    }
+
+    override suspend fun getLastPirWauPixelTimeMs(): Long = withContext(dispatcherProvider.io()) {
+        return@withContext pirDataStore.wauLastSentMs
+    }
+
+    override suspend fun setLastPirWauPixelTimeMs(timeMs: Long) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.wauLastSentMs = timeMs
+        }
+    }
+
+    override suspend fun getLastPirMauPixelTimeMs(): Long = withContext(dispatcherProvider.io()) {
+        return@withContext pirDataStore.mauLastSentMs
+    }
+
+    override suspend fun setLastPirMauPixelTimeMs(timeMs: Long) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.mauLastSentMs = timeMs
+        }
+    }
+
+    override suspend fun getLastPirInteractionDauPixelTimeMs(): Long = withContext(dispatcherProvider.io()) {
+        return@withContext pirDataStore.interactionDauLastSentMs
+    }
+
+    override suspend fun setLastPirInteractionDauPixelTimeMs(timeMs: Long) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.interactionDauLastSentMs = timeMs
+        }
+    }
+
+    override suspend fun getLastPirInteractionWauPixelTimeMs(): Long = withContext(dispatcherProvider.io()) {
+        return@withContext pirDataStore.interactionWauLastSentMs
+    }
+
+    override suspend fun setLastPirInteractionWauPixelTimeMs(timeMs: Long) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.interactionWauLastSentMs = timeMs
+        }
+    }
+
+    override suspend fun getLastPirInteractionMauPixelTimeMs(): Long = withContext(dispatcherProvider.io()) {
+        return@withContext pirDataStore.interactionMauLastSentMs
+    }
+
+    override suspend fun setLastPirInteractionMauPixelTimeMs(timeMs: Long) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.interactionMauLastSentMs = timeMs
+        }
+    }
+
+    override suspend fun getWeeklyStatLastSentMs(): Long = withContext(dispatcherProvider.io()) {
+        return@withContext pirDataStore.weeklyStatLastSentMs
+    }
+
+    override suspend fun setWeeklyStatLastSentMs(timeMs: Long) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.weeklyStatLastSentMs = timeMs
+        }
+    }
+
+    override suspend fun setHasBrokerConfigBeenManuallyUpdated(updated: Boolean) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.hasBrokerConfigBeenManuallyUpdated = updated
+        }
+    }
+
+    override suspend fun hasBrokerConfigBeenManuallyUpdated(): Boolean = withContext(dispatcherProvider.io()) {
+        return@withContext pirDataStore.hasBrokerConfigBeenManuallyUpdated
+    }
+
+    override suspend fun latestBackgroundScanRunInMs(): Long = withContext(dispatcherProvider.io()) {
+        return@withContext pirDataStore.latestBackgroundScanRunInMs
+    }
+
+    override suspend fun setLatestBackgroundScanRunInMs(timeMs: Long) {
+        withContext(dispatcherProvider.io()) {
+            pirDataStore.latestBackgroundScanRunInMs = timeMs
+        }
+    }
+
+    override suspend fun clearAllData() {
+        withContext(dispatcherProvider.io()) {
+            brokerJsonDao()?.deleteAll()
+            brokerDao()?.deleteAll()
+            extractedProfileDao()?.deleteAllExtractedProfiles()
+            userProfileDao()?.deleteAllProfiles()
+            pirDataStore.reset()
+        }
+    }
+
+    override suspend fun clearUserData() {
+        withContext(dispatcherProvider.io()) {
+            extractedProfileDao()?.deleteAllExtractedProfiles()
+            userProfileDao()?.deleteAllProfiles()
+            pirDataStore.resetUserData()
+        }
+    }
+
     private fun List<EmailData>.toRequest(): PirEmailConfirmationDataRequest =
         PirEmailConfirmationDataRequest(
             items =
@@ -684,6 +913,7 @@ class RealPirRepository(
             fullName = this.fullName,
             dateAddedInMillis = this.dateAddedInMillis,
             deprecated = this.deprecated,
+            extras = this.extras,
         )
 
     private fun ExtractedProfile.toStoredExtractedProfile(): StoredExtractedProfile =
@@ -712,6 +942,7 @@ class RealPirRepository(
                 this.dateAddedInMillis
             },
             deprecated = this.deprecated,
+            extras = this.extras,
         )
 
     private fun ProfileQuery.toUserProfile(): UserProfile =
@@ -731,6 +962,16 @@ class RealPirRepository(
             birthYear = this.birthYear,
             deprecated = this.deprecated,
         )
+
+    private fun BrokerEntity.toBroker() = Broker(
+        name = name,
+        fileName = fileName,
+        url = url,
+        version = version,
+        parent = parent,
+        addedDatetime = addedDatetime,
+        removedAt = removedAt,
+    )
 
     private suspend fun prepareDatabase(): PirDatabase? {
         val database = databaseFactory.getDatabase()

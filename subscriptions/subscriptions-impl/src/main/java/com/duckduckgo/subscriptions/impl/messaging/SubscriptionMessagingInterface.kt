@@ -23,6 +23,7 @@ import com.duckduckgo.app.di.AppCoroutineScope
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.common.utils.extensions.toTldPlusOne
 import com.duckduckgo.di.scopes.ActivityScope
+import com.duckduckgo.duckchat.api.DuckAiHostProvider
 import com.duckduckgo.js.messaging.api.JsCallbackData
 import com.duckduckgo.js.messaging.api.JsMessage
 import com.duckduckgo.js.messaging.api.JsMessageCallback
@@ -33,10 +34,9 @@ import com.duckduckgo.js.messaging.api.JsRequestResponse
 import com.duckduckgo.js.messaging.api.SubscriptionEvent
 import com.duckduckgo.js.messaging.api.SubscriptionEventData
 import com.duckduckgo.subscriptions.impl.AccessTokenResult
-import com.duckduckgo.subscriptions.impl.AuthTokenResult
 import com.duckduckgo.subscriptions.impl.JSONObjectAdapter
-import com.duckduckgo.subscriptions.impl.PrivacyProFeature
 import com.duckduckgo.subscriptions.impl.SubscriptionsChecker
+import com.duckduckgo.subscriptions.impl.SubscriptionsFeature
 import com.duckduckgo.subscriptions.impl.SubscriptionsManager
 import com.duckduckgo.subscriptions.impl.pixels.SubscriptionPixelSender
 import com.squareup.anvil.annotations.ContributesBinding
@@ -58,7 +58,8 @@ class SubscriptionMessagingInterface @Inject constructor(
     @AppCoroutineScope private val appCoroutineScope: CoroutineScope,
     pixelSender: SubscriptionPixelSender,
     subscriptionsChecker: SubscriptionsChecker,
-    private val privacyProFeature: PrivacyProFeature,
+    duckAiHostProvider: DuckAiHostProvider,
+    subscriptionsFeature: SubscriptionsFeature,
 ) : JsMessaging {
     private val moshi = Moshi.Builder().add(JSONObjectAdapter()).build()
 
@@ -68,12 +69,11 @@ class SubscriptionMessagingInterface @Inject constructor(
     private val handlers = listOf(
         SubscriptionsHandler(),
         GetSubscriptionMessage(subscriptionsManager, dispatcherProvider),
-        SetSubscriptionMessage(subscriptionsManager, appCoroutineScope, dispatcherProvider, pixelSender, subscriptionsChecker),
         SetAuthTokensMessage(subscriptionsManager, appCoroutineScope, dispatcherProvider, pixelSender, subscriptionsChecker),
         InformationalEventsMessage(subscriptionsManager, appCoroutineScope, pixelSender),
         GetAccessTokenMessage(subscriptionsManager),
         GetAuthAccessTokenMessage(subscriptionsManager),
-        GetFeatureConfigMessage(privacyProFeature),
+        GetFeatureConfigMessage(subscriptionsFeature),
     )
 
     @JavascriptInterface
@@ -129,12 +129,13 @@ class SubscriptionMessagingInterface @Inject constructor(
     override val context: String = "subscriptionPages"
     override val callbackName: String = "messageCallback"
     override val secret: String = "duckduckgo-android-messaging-secret"
-    override val allowedDomains: List<String> = listOf("duckduckgo.com")
+    override val allowedDomains: List<String> = listOf("duckduckgo.com", duckAiHostProvider.getHost())
 
     private fun isUrlAllowed(url: String?): Boolean {
         if (allowedDomains.isEmpty()) return true
-        val eTld = url?.toTldPlusOne() ?: return false
-        return (allowedDomains.contains(eTld))
+        val host = url ?: return false
+        val eTld = host.toTldPlusOne()
+        return allowedDomains.contains(host) || (eTld != null && allowedDomains.contains(eTld))
     }
 
     inner class SubscriptionsHandler : JsMessageHandler {
@@ -146,11 +147,15 @@ class SubscriptionMessagingInterface @Inject constructor(
         override val featureName: String = "useSubscription"
         override val methods: List<String> = listOf(
             "subscriptionSelected",
+            "subscriptionChangeSelected",
             "getSubscriptionOptions",
+            "getSubscriptionTierOptions",
             "backToSettings",
             "activateSubscription",
             "featureSelected",
             "backToSettingsActivateSuccess",
+            "getUserSettings",
+            "requestNotificationsPermission",
         )
     }
 
@@ -162,22 +167,20 @@ class SubscriptionMessagingInterface @Inject constructor(
         override fun process(jsMessage: JsMessage, jsMessaging: JsMessaging, jsMessageCallback: JsMessageCallback?) {
             if (jsMessage.id == null) return
 
-            val authToken: String? = runBlocking(dispatcherProvider.io()) {
-                val pat = subscriptionsManager.getAuthToken()
-                when (pat) {
-                    is AuthTokenResult.Success -> pat.authToken
-                    is AuthTokenResult.Failure.TokenExpired -> pat.authToken
-                    else -> null
+            val accessToken: String? = runBlocking(dispatcherProvider.io()) {
+                when (val result = subscriptionsManager.getAccessToken()) {
+                    is AccessTokenResult.Success -> result.accessToken
+                    is AccessTokenResult.Failure -> null
                 }
             }
 
-            val data = if (authToken != null) {
+            val data = if (accessToken != null) {
                 JsRequestResponse.Success(
                     context = jsMessage.context,
                     featureName = featureName,
                     method = jsMessage.method,
                     id = jsMessage.id!!,
-                    result = JSONObject("""{ "token":"$authToken"}"""),
+                    result = JSONObject("""{ "token":"$accessToken"}"""),
                 )
             } else {
                 JsRequestResponse.Success(
@@ -195,32 +198,6 @@ class SubscriptionMessagingInterface @Inject constructor(
         override val allowedDomains: List<String> = emptyList()
         override val featureName: String = "useSubscription"
         override val methods: List<String> = listOf("getSubscription")
-    }
-
-    inner class SetSubscriptionMessage(
-        private val subscriptionsManager: SubscriptionsManager,
-        @AppCoroutineScope private val appCoroutineScope: CoroutineScope,
-        private val dispatcherProvider: DispatcherProvider,
-        private val pixelSender: SubscriptionPixelSender,
-        private val subscriptionsChecker: SubscriptionsChecker,
-    ) : JsMessageHandler {
-        override fun process(jsMessage: JsMessage, jsMessaging: JsMessaging, jsMessageCallback: JsMessageCallback?) {
-            try {
-                val token = jsMessage.params.getString("token")
-                appCoroutineScope.launch(dispatcherProvider.io()) {
-                    subscriptionsManager.signInV1(token)
-                    subscriptionsChecker.runChecker()
-                    pixelSender.reportRestoreUsingEmailSuccess()
-                    pixelSender.reportSubscriptionActivated()
-                }
-            } catch (e: Exception) {
-                logcat { "Error parsing the token" }
-            }
-        }
-
-        override val allowedDomains: List<String> = emptyList()
-        override val featureName: String = "useSubscription"
-        override val methods: List<String> = listOf("setSubscription")
     }
 
     inner class SetAuthTokensMessage(
@@ -394,7 +371,7 @@ class SubscriptionMessagingInterface @Inject constructor(
     }
 
     private inner class GetFeatureConfigMessage(
-        private val privacyProFeature: PrivacyProFeature,
+        private val subscriptionsFeature: SubscriptionsFeature,
     ) : JsMessageHandler {
         override fun process(
             jsMessage: JsMessage,
@@ -403,15 +380,14 @@ class SubscriptionMessagingInterface @Inject constructor(
         ) {
             val jsMessageId = jsMessage.id ?: return
 
-            if (privacyProFeature.enableNewSubscriptionMessages().isEnabled().not()) return
-
-            val authV2Enabled = privacyProFeature.enableSubscriptionFlowsV2().isEnabled()
-            val duckAiSubscriberModelsEnabled = privacyProFeature.duckAiPlus().isEnabled()
-            val supportsAlternateStripePaymentFlow = privacyProFeature.supportsAlternateStripePaymentFlow().isEnabled()
+            val duckAiSubscriberModelsEnabled = subscriptionsFeature.duckAiPlus().isEnabled()
+            val supportsAlternateStripePaymentFlow = subscriptionsFeature.supportsAlternateStripePaymentFlow().isEnabled()
+            val useGetSubscriptionTierOptions = subscriptionsFeature.tierMessagingEnabled().isEnabled()
             val resultJson = JSONObject().apply {
-                put("useSubscriptionsAuthV2", authV2Enabled)
+                put("useSubscriptionsAuthV2", true)
                 put("usePaidDuckAi", duckAiSubscriberModelsEnabled)
                 put("useAlternateStripePaymentFlow", supportsAlternateStripePaymentFlow)
+                put("useGetSubscriptionTierOptions", useGetSubscriptionTierOptions)
             }
 
             val response = JsRequestResponse.Success(

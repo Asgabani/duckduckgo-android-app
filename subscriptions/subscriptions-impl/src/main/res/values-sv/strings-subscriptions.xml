@@ -84,6 +84,7 @@
     <string name="subscriptionSettingSectionHelpAndSupport">Hjälp och support</string>
     <string name="subscriptionSettingSendFeedback">Skicka återkoppling</string>
     <string name="subscriptionSettingActivating">Aktiverar</string>
+    <string name="subscriptionSettingManagePlan">Hantera betalning</string>
 
     <!--Purchase Subscriptions-->
     <string name="purchaseCompletedTitle">Du är klar.</string>
@@ -103,8 +104,8 @@
     <string name="changePlanDescription">Ditt abonnemang köptes genom Apple App Store. För att ändra ditt abonnemang eller faktureringsinställningar går du till Inställningar &gt; Apple-konto &gt; Abonnemang på en enhet som är inloggad på det Apple-konto som användes för att köpa ditt abonnemang.</string>
 
     <!-- PIR Activity-->
-    <string name="pirTitle">Aktivera Privacy Pro på en dator för att konfigurera Personal Information Removal</string>
-    <string name="pirDescription">I DuckDuckGo-webbläsaren för datorer går du till <b>Inställningar &gt; Privacy Pro</b> och klickar på <b>Jag har ett abonnemang</b> för att komma igång.</string>
+    <string name="pirTitle">Aktivera DuckDuckGo-abonnemanget på en dator för att konfigurera Personal Information Removal</string>
+    <string name="pirDescription">I DuckDuckGo-webbläsaren för datorer går du till <b>Inställningar &gt; Prenumerera på DuckDuckGo</b> och klickar på <b>Jag har ett abonnemang</b> för att komma igång.</string>
     <string name="pirWindowsButton" translatable="false">Windows</string>
     <string name="pirMacOsButton" translatable="false">Mac</string>
 
@@ -147,18 +148,14 @@
     <string name="feedbackSubCategoryItrAdvisorUnhelpful">Samtal till rådgivare var inte hjälpsamt</string>
     <string name="feedbackSubCategoryItrOther">Annat</string>
 
-    <string name="feedbackSubCategorySubsOtp">Engångslösenord</string>
-    <string name="feedbackSubCategorySubsOther">Annat</string>
+    <string name="feedbackSubCategorySubsOtp">Problem med engångslösenord</string>
+    <string name="feedbackSubCategorySubsOther">Övrigt</string>
 
     <string name="feedbackSubmitVpnHeader">Har du hittat ett problem som inte täcks av vårt <annotation type="faqs_link">hjälpcenter</annotation> ? Vi vill definitivt veta mer om det.</string>
     <string name="feedbackSubmitVpnDescriptionHint">Berätta för oss vad som händer ...</string>
     <string name="feedbackSubmitVpnDisclaimer">"Förutom de uppgifter som anges ovan skickar vi viss anonymiserad information med din feedback:\n\n• Huruvida vissa webbläsarfunktioner är aktiva\n• Sammanställd appdiagnostik (t.ex. felkoder)\n\nGenom att klicka på Skicka godkänner du att DuckDuckGo får använda den inlämnade informationen för att förbättra appen."</string>
     <string name="feedbackSubmitVpnSubmit">Skicka</string>
     <string name="feedbackSubmitCompletedMessage">Tack! Återkopplingen har skickats.</string>
-    <string name="feedbackSubmitFailedMessage">Något gick fel</string>
-
-    <string name="feedbackSubmitEmailByLine">Ange en e-postadress om du vill att vi kontaktar dig angående problemet (vi kanske inte kan svara på alla problem):</string>
-    <string name="feedbackSubmitEmailHint">E-postadress (valfritt)</string>
 
     <string name="feedbackSubmitGeneralDescriptionHint">Ge din feedback ...</string>
     <string name="feedbackSubmitFeatureRequestDescriptionHint">Vilken funktion vill du ha?</string>
@@ -168,16 +165,7 @@
     <string name="activitySubscriptions">Abonnemang</string>
     <string name="activitySubscriptionSettings">Abonnemangsinställningar</string>
     <string name="activityActivateSubscription">Jag har ett abonnemang</string>
-    <string name="activityPir" translatable="false">Privacy Pro</string>
     <string name="activitySendFeedback">Skicka återkoppling</string>
-
-    <!-- Dynamic Switch % -->
-    <string name="switchBottomSheetDynamicTitleUpgrade" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Spara %1$s %% med\nett årsabonnemang!</string>
-    <string name="switchBottomSheetDynamicTitleDowngrade" instruction="%1$s is the savings percentage when using a yearly plan instead of monthly (e.g. 16)">Du sparar %1$s %% med\nett årsabonnemang!</string>
-    <string name="subscriptionSettingSwitchUpgradeDynamic" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Byt till årligt och spara %1$s %%</string>
-
-    <!-- Privacy Pro Rebranding-->
-    <string name="subscriptionSettingRebrandingMessage">Privacy Pro kallas nu bara DuckDuckGo-abonnemanget</string>
 
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitle">Abonnenter får vårt VPN och avancerade AI-modeller i Duck.ai, Personal Information Removal och Identity Theft Restoration.</string>
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitleRow">Abonnenter får vårt VPN, avancerade AI-modeller i Duck.ai och Identity Theft Restoration.</string>
@@ -187,9 +175,32 @@
     <string name="feedbackSubCategoryDuckAiLoginThirdPartyBrowser">Det går inte att komma åt Duck.ai med mitt abonnemang i andra webbläsare</string>
     <string name="feedbackSubCategoryDuckAiOther">Annan feedback om Duck.ai</string>
 
-    <string name="subscriptionSettingSectionTitle" translatable="false">DuckDuckGo Subscription</string>
+    <string name="subscriptionSettingSectionTitle">DuckDuckGo Abonnemang</string>
     <string name="subscriptionSettingSubscribeSecure">Säkra ditt Wi-Fi och chatta privat med avancerade AI-modeller</string>
 
     <string name="feedbackGeneralSubscription">Abonnemang</string>
+
+    <!-- Pro tier changes -->
+    <string name="feedbackSubCategorySubsUnableToAccessProFeatures">Kan inte komma åt funktioner på Plus- eller Pro-nivå</string>
+    <string name="subscriptionsProUpgradeTitle">Uppgradera till Pro</string>
+    <string name="subscriptionsProUpgradeMessage">Lås upp kraftfullare AI</string>
+    <string name="subscriptionSettingSectionManageSubscription">Hantera abonnemang</string>
+    <string name="subscriptionSettingViewAllPlans">Visa alla abonnemang</string>
+    <string name="subscriptionSettingManagePaymentOrCancel">Hantera betalning eller avbryt</string>
+
+    <!-- Pending plan changes -->
+    <string name="subscriptionPendingPlanChangeDowngradePanel" instruction="First placeholder is the Tier name (e.g. Plus, Pro), second is date in short format (month day)">Din plan kommer att nedgraderas till %1$s den %2$s.</string>
+    <string name="subscriptionPendingPlanChangeUpgrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">Din plan kommer att uppgraderas till %1$s den %2$s.</string>
+    <string name="subscriptionPendingPlanChangeDowngrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">Din plan kommer att nedgraderas till %1$s den %2$s.</string>
+    <string name="planNamePlusMonthly">Plus – månadsvis</string>
+    <string name="planNamePlusYearly">Plus Årligen</string>
+    <string name="planNameProMonthly">Pro – månadsvis</string>
+    <string name="planNameProYearly">Pro – årsvis</string>
+    <string name="tierPlusName" translatable="false">PLUS</string>
+    <string name="tierProName" translatable="false">PRO</string>
+
+    <!-- Content Descriptions -->
+    <string name="subscriptionExpiredStatusIconContentDescription">Prenumerationen har gått ut</string>
+    <string name="subscriptionActiveStatusIconContentDescription">Prenumerationen är aktiv</string>
 
 </resources>

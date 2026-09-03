@@ -84,6 +84,7 @@
     <string name="subscriptionSettingSectionHelpAndSupport">Pomoc a podpora</string>
     <string name="subscriptionSettingSendFeedback">Odoslať spätnú väzbu</string>
     <string name="subscriptionSettingActivating">Aktivácia</string>
+    <string name="subscriptionSettingManagePlan">Spravovať platby</string>
 
     <!--Purchase Subscriptions-->
     <string name="purchaseCompletedTitle">Máš všetko pripravené.</string>
@@ -103,8 +104,8 @@
     <string name="changePlanDescription">Tvoje predplatné bolo zakúpené prostredníctvom obchodu Apple App Store. Ak chceš zmeniť svoje nastavenia plánu alebo fakturácie, prejdi do časti Nastavenia &gt; Apple účet &gt; Predplatné na zariadení prihlásenom do rovnakého Apple účtu, ktorý bol použitý na zakúpenie predplatného.</string>
 
     <!-- PIR Activity-->
-    <string name="pirTitle">Aktivuj si Privacy Pro na pracovnej ploche a nastav si Personal Information Removal</string>
-    <string name="pirDescription">Začni tak, že v prehliadači DuckDuckGo pre PC prejdeš na <b>Nastavenia &gt; Privacy Pro</b> a klikneš na <b>Mám predplatné</b>.</string>
+    <string name="pirTitle">Aktivuj si predplatné DuckDuckGo na pracovnej ploche a nastav si Personal Information Removal</string>
+    <string name="pirDescription">V prehliadači DuckDuckGo pre počítače začni tak, že prejdeš do časti <b>Nastavenia &gt; Prihlásiť sa na odber DuckDuckGo</b> a klikneš na <b>Mám predplatné</b>.</string>
     <string name="pirWindowsButton" translatable="false">Windows</string>
     <string name="pirMacOsButton" translatable="false">Mac</string>
 
@@ -147,18 +148,14 @@
     <string name="feedbackSubCategoryItrAdvisorUnhelpful">Telefonát poradcovi nebol nápomocný</string>
     <string name="feedbackSubCategoryItrOther">Iné</string>
 
-    <string name="feedbackSubCategorySubsOtp">Jednorazové heslo</string>
-    <string name="feedbackSubCategorySubsOther">Iné</string>
+    <string name="feedbackSubCategorySubsOtp">Problém s jednorazovým heslom</string>
+    <string name="feedbackSubCategorySubsOther">Niečo iné</string>
 
     <string name="feedbackSubmitVpnHeader">Našiel/našla si problém, ktorý nepokrýva naše <annotation type="faqs_link">centrum pomoci</annotation> ? Určite o tom chceme vedieť.</string>
     <string name="feedbackSubmitVpnDescriptionHint">Povedz nám, čo sa deje...</string>
     <string name="feedbackSubmitVpnDisclaimer">"Okrem vyššie uvedených údajov posielame spolu s tvojou spätnou väzbou aj niektoré anonymizované informácie:\n\n- Či sú niektoré funkcie prehliadača aktívne\n- Súhrnná diagnostika aplikácie (napr. kódy chýb)\n\nKliknutím na tlačidlo Odoslať súhlasíš s tým, že DuckDuckGo môže použiť odoslané informácie na zlepšenie aplikácie."</string>
     <string name="feedbackSubmitVpnSubmit">Odoslať</string>
     <string name="feedbackSubmitCompletedMessage">Ďakujeme! Spätná väzba bola odoslaná</string>
-    <string name="feedbackSubmitFailedMessage">Vyskytla sa chyba</string>
-
-    <string name="feedbackSubmitEmailByLine">Uveď e-mail, ak chceš, aby sme ťa v súvislosti s týmto problémom kontaktovali (nemusíme byť schopní odpovedať na všetky problémy):</string>
-    <string name="feedbackSubmitEmailHint">E-mail (nepovinné)</string>
 
     <string name="feedbackSubmitGeneralDescriptionHint">Prosím, daj nám svoju spätnú väzbu...</string>
     <string name="feedbackSubmitFeatureRequestDescriptionHint">Akú funkciu by si chcel/-a?</string>
@@ -168,16 +165,7 @@
     <string name="activitySubscriptions">Predplatné</string>
     <string name="activitySubscriptionSettings">Nastavenia predplatného</string>
     <string name="activityActivateSubscription">Mám predplatné</string>
-    <string name="activityPir" translatable="false">Privacy Pro</string>
     <string name="activitySendFeedback">Odoslať spätnú väzbu</string>
-
-    <!-- Dynamic Switch % -->
-    <string name="switchBottomSheetDynamicTitleUpgrade" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Ušetri %1$s %%\ns ročným plánom!</string>
-    <string name="switchBottomSheetDynamicTitleDowngrade" instruction="%1$s is the savings percentage when using a yearly plan instead of monthly (e.g. 16)">S ročným plánom ušetríš %1$s %%!</string>
-    <string name="subscriptionSettingSwitchUpgradeDynamic" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Prejdi na ročný plán a ušetri %1$s %%</string>
-
-    <!-- Privacy Pro Rebranding-->
-    <string name="subscriptionSettingRebrandingMessage">Privacy Pro sa teraz nazýva predplatné DuckDuckGo.</string>
 
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitle">Predplatitelia získajú našu VPN, pokročilé modely umelej inteligencie v Duck.ai, Personal Information Removal a Identity Theft Restoration.</string>
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitleRow">Predplatitelia získajú našu VPN, pokročilé modely umelej inteligencie v Duck.ai a službu Identity Theft Restoration.</string>
@@ -187,9 +175,32 @@
     <string name="feedbackSubCategoryDuckAiLoginThirdPartyBrowser">Nemôžem sa s mojím predplatným dostať na Duck.ai v iných prehliadačoch.</string>
     <string name="feedbackSubCategoryDuckAiOther">Ďalšie pripomienky Duck.ai</string>
 
-    <string name="subscriptionSettingSectionTitle" translatable="false">DuckDuckGo Subscription</string>
+    <string name="subscriptionSettingSectionTitle">Predplatné DuckDuckGo</string>
     <string name="subscriptionSettingSubscribeSecure">Zabezpeč si Wi-Fi a chatuj súkromne s pokročilými modelmi umelej inteligencie</string>
 
     <string name="feedbackGeneralSubscription">Predplatné</string>
+
+    <!-- Pro tier changes -->
+    <string name="feedbackSubCategorySubsUnableToAccessProFeatures">Nie je možné získať prístup k funkciám úrovne Plus alebo Pro</string>
+    <string name="subscriptionsProUpgradeTitle">Aktualizovať na Pro</string>
+    <string name="subscriptionsProUpgradeMessage">Odomkni silnejšiu umelú inteligenciu</string>
+    <string name="subscriptionSettingSectionManageSubscription">Spravovať predplatné</string>
+    <string name="subscriptionSettingViewAllPlans">Zobraziť všetky plány</string>
+    <string name="subscriptionSettingManagePaymentOrCancel">Spravovať platbu alebo zrušiť</string>
+
+    <!-- Pending plan changes -->
+    <string name="subscriptionPendingPlanChangeDowngradePanel" instruction="First placeholder is the Tier name (e.g. Plus, Pro), second is date in short format (month day)">Tvoj plán prejde na nižšiu úroveň %1$s dňa %2$s.</string>
+    <string name="subscriptionPendingPlanChangeUpgrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">Tvoj plán prejde na vyššiu úroveň %1$s dňa %2$s.</string>
+    <string name="subscriptionPendingPlanChangeDowngrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">Tvoj plán prejde na nižšiu úroveň %1$s dňa %2$s.</string>
+    <string name="planNamePlusMonthly">Plus mesačne</string>
+    <string name="planNamePlusYearly">Plus ročne</string>
+    <string name="planNameProMonthly">Pro mesačne</string>
+    <string name="planNameProYearly">Pro ročne</string>
+    <string name="tierPlusName" translatable="false">PLUS</string>
+    <string name="tierProName" translatable="false">PRO</string>
+
+    <!-- Content Descriptions -->
+    <string name="subscriptionExpiredStatusIconContentDescription">Platnosť tvojho predplatného vypršala</string>
+    <string name="subscriptionActiveStatusIconContentDescription">Predplatné aktívne</string>
 
 </resources>

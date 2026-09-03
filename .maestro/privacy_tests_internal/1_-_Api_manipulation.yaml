@@ -1,4 +1,5 @@
 appId: com.duckduckgo.mobile.android
+androidWebViewHierarchy: devtools
 tags:
   - privacyTestInternal
 ---
@@ -8,8 +9,7 @@ tags:
       - launchApp:
           clearState: true
       - runFlow: ../shared/skip_all_onboarding.yaml
-      - tapOn:
-          id: "com.duckduckgo.mobile.android:id/browserMenu"
+      - runFlow: ../shared/browser_screen/click_on_menu_button.yaml
       - tapOn:
           id: "com.duckduckgo.mobile.android:id/settingsMenuItem"
       - scrollUntilVisible:
@@ -43,8 +43,10 @@ tags:
       - pressKey: Back
       - pressKey: Back
       - pressKey: Back
-      - assertVisible:
-          id: "com.duckduckgo.mobile.android:id/omnibarTextInput"
+      # Tap whichever field is live: the legacy omnibar (native input search-only off)
+      # or the native input widget's field (native input search-only on).
+      - tapOn:
+          id: "omnibarTextInput|inputField"
       - inputText: "https://privacy-test-pages.site/content-scope-scripts/infra/pages/conditional-matching-experiments.html?automation=1"
       - pressKey: Enter
       - tapOn:

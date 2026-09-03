@@ -18,8 +18,8 @@
 <!-- smartling.instruction_attributes = instruction -->
 <resources>
     <!-- DRM Permission -->
-    <string name="drmSiteDialogTitle" instruction="Placeholder is the name of a website">Η εφαρμογή «%1$s» θέλει να ανοίξει το λογισμικό σας DRM</string>
-    <string name="drmSiteDialogSubtitle">Το λογισμικό Διαχείριση ψηφιακών δικαιωμάτων απαιτείται για αναπαραγωγή προστατευμένου περιεχομένου πολυμέσων, ωστόσο παρέχει επίσης πρόσβαση σε αναγνωριστικά συσκευών. Χορηγήστε άδεια μόνο σε ιστότοπους που εμπιστεύεστε για αυτά τα δεδομένα. Μπορείτε να διαχειριστείτε τα δικαιώματα οποιαδήποτε στιγμή από τις Ρυθμίσεις. <annotation type="drm_learn_more_link">Μάθετε περισσότερα</annotation></string>
+    <string name="drmSitePermissionDialogTitle" instruction="Placeholder is the name of a website">Ο ιστότοπος «%1$s» επιθυμεί να ανοίξει το λογισμικό διαχείρισης ψηφιακών δικαιωμάτων (DRM)</string>
+    <string name="drmSitePermissionDialogSubtitle" instruction="Placeholder is the name of a website">Αν επιλέξετε «Απόρριψη», η αναπαραγωγή των βίντεο στον ιστότοπο ενδέχεται να μην είναι δυνατή, ωστόσο ο ιστότοπος %1$s δεν θα έχει πρόσβαση στα αναγνωριστικά συσκευών που παρέχονται από το λογισμικό DRM. Μπορείτε να διαχειριστείτε τα δικαιώματα οποιαδήποτε στιγμή από τις Ρυθμίσεις. <annotation type="drm_learn_more_link">Μάθετε περισσότερα</annotation></string>
     <string name="drmSiteDialogAllowAlways">Πάντα</string>
     <string name="drmSiteDialogAllowOnce">Μόνο γι\' αυτή τη σύνδεση</string>
     <string name="drmSiteDialogDenyAlways">Άρνηση για πάντα</string>
@@ -57,6 +57,10 @@
     <string name="systemPermissionDialogCameraAndAudioDeniedContent">Οι ιστότοποι μπορούν να χρησιμοποιούν την κάμερα και το μικρόφωνό σας μόνο εάν επιτρέψετε στο DuckDuckGo να αιτηθεί πρόσβαση.</string>
     <string name="systemPermissionsDeniedDialogPositiveButton">Άνοιγμα ρυθμίσεων</string>
     <string name="systemPermissionsDeniedDialogNegativeButton">Ακύρωση</string>
+    <string name="duckAiMicPermissionDeniedSnackBarMessage">Απαιτείται δικαίωμα πρόσβασης στο μικρόφωνο για τις φωνητικές λειτουργίες</string>
+    <string name="duckAiMicPermissionDeniedDialogTitle">Το DuckDuckGo χρειάζεται πρόσβαση στο μικρόφωνό σου</string>
+    <string name="duckAiMicPermissionDeniedDialogContent">Απαιτούνται δικαιώματα πρόσβασης στο μικρόφωνο αν θέλεις να χρησιμοποιήσεις τη φωνητική συνομιλία στο Duck.ai</string>
+    <string name="duckAiMicPermissionDeniedDialogPositiveButton">Αλλαγή δικαιωμάτων</string>
 
     <string name="sitePermissionsSettingsDescription">Οι ιστότοποι που επισκέπτεστε ενδέχεται να ζητήσουν πρόσβαση στην τοποθεσία, την κάμερα, το μικρόφωνο ή το λογισμικό DRM (Διαχείριση ψηφιακών δικαιωμάτων) της συσκευής σας. Δεν θα μπορούν να έχουν πρόσβαση σε αυτά εάν δεν τους παρέχετε ρητά την άδειά σας.</string>
     <string name="sitePermissionsSettingsEnablePermissionTitle">Να επιτρέπεται σε όλους τους ιστότοπους να αιτούνται:</string>

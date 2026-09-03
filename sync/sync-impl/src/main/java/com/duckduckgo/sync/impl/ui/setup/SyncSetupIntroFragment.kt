@@ -93,7 +93,12 @@ class SyncSetupIntroFragment : DuckDuckGoFragment(R.layout.fragment_intro_sync) 
         when (viewState.viewMode) {
             is CreateAccountIntro -> {
                 binding.contentTitle.text = getString(R.string.sync_intro_enable_title)
-                binding.contentBody.text = getString(R.string.sync_intro_enable_content)
+                val contentRes = if (viewState.aiChatSyncEnabled) {
+                    R.string.sync_intro_enable_content_with_ai_chat
+                } else {
+                    R.string.sync_intro_enable_content
+                }
+                binding.contentBody.text = getString(contentRes)
                 binding.contentIllustration.setImageResource(R.drawable.ic_sync_server_128)
                 binding.syncIntroCta.text = getString(R.string.sync_intro_enable_cta)
                 binding.syncIntroFooter.text = getString(R.string.sync_intro_enable_footer)
@@ -104,11 +109,11 @@ class SyncSetupIntroFragment : DuckDuckGoFragment(R.layout.fragment_intro_sync) 
             }
 
             is RecoverAccountIntro -> {
-                binding.contentTitle.text = getString(R.string.sync_intro_recover_title)
-                binding.contentBody.text = getString(R.string.sync_intro_recover_content)
+                binding.contentTitle.text = getString(R.string.sync_recover_synced_data_title)
+                binding.contentBody.text = getString(R.string.sync_recover_synced_data_content)
                 binding.contentIllustration.setImageResource(R.drawable.ic_sync_recover_128)
                 binding.syncIntroFooter.hide()
-                binding.syncIntroCta.text = getString(R.string.sync_intro_recover_cta)
+                binding.syncIntroCta.text = getString(R.string.sync_recover_synced_data_cta)
                 binding.syncIntroCta.setOnClickListener {
                     viewModel.onStartRecoverDataClicked()
                 }

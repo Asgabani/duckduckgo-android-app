@@ -18,8 +18,8 @@
 <!-- smartling.instruction_attributes = instruction -->
 <resources>
     <!-- DRM Permission -->
-    <string name="drmSiteDialogTitle" instruction="Placeholder is the name of a website">\"%1$s\" vuole aprire il tuo software DRM</string>
-    <string name="drmSiteDialogSubtitle">Il software di gestione dei diritti digitali è necessario per riprodurre contenuti multimediali protetti, ma consente anche di accedere agli identificatori dei dispositivi. Concedi l\'autorizzazione per questi dati solo ai siti di cui ti fidi. Puoi gestire le autorizzazioni in qualsiasi momento in Impostazioni. <annotation type="drm_learn_more_link">Maggiori informazioni</annotation></string>
+    <string name="drmSitePermissionDialogTitle" instruction="Placeholder is the name of a website">\"%1$s\" vuole aprire il software Digital Rights Management (DRM)</string>
+    <string name="drmSitePermissionDialogSubtitle" instruction="Placeholder is the name of a website">Se selezioni \"Nega\", i video sul sito potrebbero diventare non riproducibili, ma %1$s non avrà accesso agli identificatori del dispositivo forniti dal software DRM. Puoi gestire le autorizzazioni in qualsiasi momento in Impostazioni. <annotation type="drm_learn_more_link">Scopri di più</annotation></string>
     <string name="drmSiteDialogAllowAlways">Sempre</string>
     <string name="drmSiteDialogAllowOnce">Solo per questa sessione</string>
     <string name="drmSiteDialogDenyAlways">Nega sempre</string>
@@ -57,6 +57,10 @@
     <string name="systemPermissionDialogCameraAndAudioDeniedContent">I siti possono utilizzare la fotocamera e il microfono solo se consenti a DuckDuckGo di richiederne l\'accesso.</string>
     <string name="systemPermissionsDeniedDialogPositiveButton">Apri Impostazioni</string>
     <string name="systemPermissionsDeniedDialogNegativeButton">Annulla</string>
+    <string name="duckAiMicPermissionDeniedSnackBarMessage">Autorizzazione del microfono necessaria per le funzioni vocali</string>
+    <string name="duckAiMicPermissionDeniedDialogTitle">DuckDuckGo deve accedere al microfono</string>
+    <string name="duckAiMicPermissionDeniedDialogContent">I permessi del microfono sono necessari se vuoi usare la chat vocale su Duck.ai</string>
+    <string name="duckAiMicPermissionDeniedDialogPositiveButton">Modifica autorizzazioni</string>
 
     <string name="sitePermissionsSettingsDescription">I siti che visiti potrebbero richiedere l\'accesso al software di localizzazione, videocamera, microfono o DRM (Digital Rights Management) del tuo dispositivo. Non potranno accedervi finché non darai il consenso esplicito.</string>
     <string name="sitePermissionsSettingsEnablePermissionTitle">Consenti a tutti i siti di richiedere:</string>

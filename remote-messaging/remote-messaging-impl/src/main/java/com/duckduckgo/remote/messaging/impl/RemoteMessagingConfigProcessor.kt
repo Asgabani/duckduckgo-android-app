@@ -16,9 +16,9 @@
 
 package com.duckduckgo.remote.messaging.impl
 
-import com.duckduckgo.remote.messaging.api.RemoteMessagingRepository
 import com.duckduckgo.remote.messaging.impl.mappers.RemoteMessagingConfigJsonMapper
 import com.duckduckgo.remote.messaging.impl.models.JsonRemoteMessagingConfig
+import com.duckduckgo.remote.messaging.impl.store.RemoteMessageImageStore
 import com.duckduckgo.remote.messaging.store.RemoteMessagingConfig
 import com.duckduckgo.remote.messaging.store.RemoteMessagingConfigRepository
 import com.duckduckgo.remote.messaging.store.expired
@@ -35,6 +35,7 @@ class RealRemoteMessagingConfigProcessor(
     private val remoteMessagingConfigRepository: RemoteMessagingConfigRepository,
     private val remoteMessagingRepository: RemoteMessagingRepository,
     private val remoteMessagingConfigMatcher: RemoteMessagingConfigMatcher,
+    private val remoteMessageImageStore: RemoteMessageImageStore,
     private val remoteMessagingFeatureToggles: RemoteMessagingFeatureToggles,
 ) : RemoteMessagingConfigProcessor {
 
@@ -55,6 +56,8 @@ class RealRemoteMessagingConfigProcessor(
         if (shouldProcess) {
             val config = remoteMessagingConfigJsonMapper.map(jsonRemoteMessagingConfig)
             val message = remoteMessagingConfigMatcher.evaluate(config)
+
+            remoteMessageImageStore.fetchAndStoreImages(message)
             remoteMessagingConfigRepository.insert(RemoteMessagingConfig(version = jsonRemoteMessagingConfig.version))
             remoteMessagingRepository.activeMessage(message)
         } else {

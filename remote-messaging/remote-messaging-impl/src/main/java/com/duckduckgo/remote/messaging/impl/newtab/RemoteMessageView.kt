@@ -16,10 +16,12 @@
 
 package com.duckduckgo.remote.messaging.impl.newtab
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
 import android.util.AttributeSet
 import android.view.View
@@ -33,6 +35,7 @@ import androidx.lifecycle.lifecycleScope
 import com.duckduckgo.anvil.annotations.ContributesActivePlugin
 import com.duckduckgo.anvil.annotations.InjectWith
 import com.duckduckgo.app.tabs.BrowserNav
+import com.duckduckgo.appbuildconfig.api.AppBuildConfig
 import com.duckduckgo.common.ui.store.AppTheme
 import com.duckduckgo.common.ui.view.gone
 import com.duckduckgo.common.ui.view.show
@@ -91,6 +94,9 @@ class RemoteMessageView @JvmOverloads constructor(
     @Inject
     lateinit var dispatchers: DispatcherProvider
 
+    @Inject
+    lateinit var appBuildConfig: AppBuildConfig
+
     private val binding: ViewRemoteMessageBinding by viewBinding()
 
     private val viewModel: RemoteMessageViewModel by lazy {
@@ -125,7 +131,7 @@ class RemoteMessageView @JvmOverloads constructor(
 
     private fun render(viewState: ViewState) {
         if (viewState.message != null) {
-            showRemoteMessage(viewState.message, viewState.newMessage)
+            showRemoteMessage(viewState.message, viewState.messageImageFilePath, viewState.newMessage)
         } else {
             binding.messageCta.gone()
         }
@@ -140,19 +146,24 @@ class RemoteMessageView @JvmOverloads constructor(
             is LaunchScreen -> launchScreen(command.screen, command.payload)
             is SharePromoLinkRMF -> launchSharePromoRMFPageChooser(command.url, command.shareTitle)
             is SubmitUrl -> submitUrl(command.url)
+            is Command.LaunchDefaultCredentialProvider -> launchDefaultCredentialProvider()
         }
     }
 
     private fun showRemoteMessage(
         message: RemoteMessage,
+        messageImageFilePath: String?,
         newMessage: Boolean,
     ) {
+        val msg = message.asMessage(
+            isLightModeEnabled = appTheme.isLightModeEnabled(),
+            localImageFilePath = messageImageFilePath,
+        )
         val shouldRender = newMessage || binding.root.visibility == View.GONE
 
-        if (shouldRender) {
+        if (msg != null && shouldRender) {
             binding.messageCta.show()
             viewModel.onMessageShown()
-            binding.messageCta.setMessage(message.asMessage(isLightModeEnabled = appTheme.isLightModeEnabled()))
             binding.messageCta.onCloseButtonClicked {
                 viewModel.onMessageCloseButtonClicked()
             }
@@ -165,6 +176,13 @@ class RemoteMessageView @JvmOverloads constructor(
             binding.messageCta.onPromoActionClicked {
                 viewModel.onMessageActionButtonClicked()
             }
+            binding.messageCta.onRemoteImageLoadSuccess {
+                viewModel.onRemoteImageLoadSuccess()
+            }
+            binding.messageCta.onRemoteImageLoadFailed {
+                viewModel.onRemoteImageLoadFailed()
+            }
+            binding.messageCta.setMessage(msg)
         }
     }
 
@@ -182,6 +200,23 @@ class RemoteMessageView @JvmOverloads constructor(
             val errorMessage = context.getString(R.string.cannotLaunchDefaultAppSettings)
             logcat(WARN) { errorMessage }
             Toast.makeText(context, errorMessage, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    @SuppressLint("DenyListedApi")
+    private fun launchDefaultCredentialProvider() {
+        runCatching {
+            val intent = if (appBuildConfig.sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                Intent(Settings.ACTION_CREDENTIAL_PROVIDER).apply {
+                    data = android.net.Uri.parse("package:${context.packageName}")
+                }
+            } else {
+                Intent(Settings.ACTION_SETTINGS)
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent, null)
+        }.onFailure {
+            logcat { "RMF: Error launching credential provider / system settings." }
         }
     }
 
@@ -227,6 +262,8 @@ class RemoteMessageView @JvmOverloads constructor(
     AppScope::class,
     boundType = NewTabPageSectionPlugin::class,
     priority = NewTabPageSectionPlugin.PRIORITY_REMOTE_MESSAGE,
+    featureName = "pluginRemoteMessageNewTabSectionPlugin",
+    parentFeatureName = "pluginPointNewTabPageSectionPlugin",
 )
 class RemoteMessageNewTabSectionPlugin @Inject constructor(
     private val remoteMessageModel: RemoteMessageModel,

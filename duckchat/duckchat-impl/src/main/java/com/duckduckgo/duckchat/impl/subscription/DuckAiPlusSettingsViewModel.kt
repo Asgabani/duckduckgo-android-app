@@ -22,8 +22,8 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.duckduckgo.anvil.annotations.ContributesViewModel
-import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.ViewScope
+import com.duckduckgo.duckchat.impl.DuckChatInternal
 import com.duckduckgo.duckchat.impl.subscription.DuckAiPlusSettingsViewModel.ViewState.SettingState
 import com.duckduckgo.duckchat.impl.subscription.DuckAiPlusSettingsViewModel.ViewState.SettingState.Disabled
 import com.duckduckgo.duckchat.impl.subscription.DuckAiPlusSettingsViewModel.ViewState.SettingState.Hidden
@@ -35,9 +35,9 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -47,7 +47,7 @@ import javax.inject.Inject
 @ContributesViewModel(ViewScope::class)
 class DuckAiPlusSettingsViewModel @Inject constructor(
     private val subscriptions: Subscriptions,
-    private val dispatcherProvider: DispatcherProvider,
+    private val duckChat: DuckChatInternal,
 ) : ViewModel(), DefaultLifecycleObserver {
 
     sealed class Command {
@@ -56,7 +56,10 @@ class DuckAiPlusSettingsViewModel @Inject constructor(
 
     private val command = Channel<Command>(1, BufferOverflow.DROP_OLDEST)
     internal fun commands(): Flow<Command> = command.receiveAsFlow()
-    data class ViewState(val settingState: SettingState = Hidden) {
+    data class ViewState(
+        val settingState: SettingState = Hidden,
+        val isDuckAiEnabled: Boolean = true,
+    ) {
 
         sealed class SettingState {
 
@@ -76,17 +79,23 @@ class DuckAiPlusSettingsViewModel @Inject constructor(
     override fun onCreate(owner: LifecycleOwner) {
         super.onCreate(owner)
 
-        viewModelScope.launch(dispatcherProvider.io()) {
+        combine(
             subscriptions.getEntitlementStatus().map { entitlements ->
                 entitlements.any { product ->
                     product == DuckAiPlus
                 }
-            }.onEach { hasValidEntitlement ->
-                val subscriptionStatus = subscriptions.getSubscriptionStatus()
-                val state = getDuckAiProState(hasValidEntitlement, subscriptionStatus)
-                _viewState.update { it.copy(settingState = state) }
-            }.launchIn(viewModelScope)
-        }
+            },
+            duckChat.observeEnableDuckChatUserSetting(),
+        ) { hasValidEntitlement, isDuckAiEnabled ->
+            val subscriptionStatus = subscriptions.getSubscriptionStatus()
+            val state = getDuckAiProState(hasValidEntitlement, subscriptionStatus)
+            _viewState.update {
+                it.copy(
+                    settingState = state,
+                    isDuckAiEnabled = isDuckAiEnabled,
+                )
+            }
+        }.launchIn(viewModelScope)
     }
 
     private suspend fun getDuckAiProState(

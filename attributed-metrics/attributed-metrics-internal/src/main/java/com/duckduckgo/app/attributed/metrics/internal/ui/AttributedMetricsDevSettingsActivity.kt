@@ -22,6 +22,7 @@ import androidx.lifecycle.lifecycleScope
 import com.duckduckgo.anvil.annotations.ContributeToActivityStarter
 import com.duckduckgo.anvil.annotations.InjectWith
 import com.duckduckgo.app.attributed.metrics.impl.AttributedMetricsState
+import com.duckduckgo.app.attributed.metrics.store.AttributedMetricsDataStore
 import com.duckduckgo.app.attributed.metrics.store.AttributedMetricsDateUtils
 import com.duckduckgo.app.attributed.metrics.store.EventDao
 import com.duckduckgo.app.attributed.metrics.store.EventEntity
@@ -29,10 +30,14 @@ import com.duckduckgo.appbuildconfig.api.AppBuildConfig
 import com.duckduckgo.attributed.metrics.internal.databinding.ActivityAttributedMetricsDevSettingsBinding
 import com.duckduckgo.common.ui.DuckDuckGoActivity
 import com.duckduckgo.common.ui.viewbinding.viewBinding
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeHandler
 import com.duckduckgo.common.utils.plugins.PluginPoint
 import com.duckduckgo.di.scopes.ActivityScope
 import com.duckduckgo.navigation.api.GlobalActivityStarter
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
 
 @InjectWith(ActivityScope::class)
@@ -54,14 +59,32 @@ class AttributedMetricsDevSettingsActivity : DuckDuckGoActivity() {
     lateinit var attributedMetricsState: AttributedMetricsState
 
     @Inject
+    lateinit var attributedMetricsDataStore: AttributedMetricsDataStore
+
+    @Inject
     lateinit var settingsPlugins: PluginPoint<AttributedMetricsSettingPlugin>
+
+    @Inject
+    lateinit var edgeToEdgeHandler: EdgeToEdgeHandler
+
+    private val dateETFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("America/New_York")
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableTransparentEdgeToEdge()
         setContentView(binding.root)
+        configureEdgeToEdgeInsets()
         setupToolbar(binding.includeToolbar.toolbar)
         setupViews()
         setupPlugins()
+    }
+
+    private fun configureEdgeToEdgeInsets() {
+        edgeToEdgeHandler.applyHorizontalSystemBarInsets(binding.root)
+        edgeToEdgeHandler.applyStatusBarInsets(binding.includeToolbar.appBarLayout)
+        edgeToEdgeHandler.applyScrollableNavigationBarInsets(binding.contentScrollView)
     }
 
     private fun setupPlugins() {
@@ -85,6 +108,29 @@ class AttributedMetricsDevSettingsActivity : DuckDuckGoActivity() {
         lifecycleScope.launch {
             binding.clientActive.setSecondaryText(if (attributedMetricsState.isActive()) "Yes" else "No")
             binding.returningUser.setSecondaryText(if (appBuildConfig.isAppReinstall()) "Yes" else "No")
+            binding.clientInitDateInput.apply {
+                text = attributedMetricsDataStore.getInitializationDate().orEmpty()
+            }
+        }
+
+        binding.clientInitDateSave.setOnClickListener {
+            lifecycleScope.launch {
+                try {
+                    val date = dateETFormat.parse(binding.clientInitDateInput.text)
+                    if (date != null) {
+                        attributedMetricsDataStore.setInitializationDate(binding.clientInitDateInput.text)
+                        Toast.makeText(this@AttributedMetricsDevSettingsActivity, "Client date updated", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(
+                            this@AttributedMetricsDevSettingsActivity,
+                            "Invalid Client date format. Use yyyy-MM-dd",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this@AttributedMetricsDevSettingsActivity, "Invalid Client date format. Use yyyy-MM-dd", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 

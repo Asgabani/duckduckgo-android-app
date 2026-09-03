@@ -20,18 +20,23 @@ import android.annotation.SuppressLint
 import android.net.Uri
 import androidx.core.net.toUri
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.duckduckgo.app.pixels.remoteconfig.AndroidBrowserConfigFeature
-import com.duckduckgo.app.referral.AppReferrerDataStore
 import com.duckduckgo.app.statistics.model.Atb
 import com.duckduckgo.app.statistics.store.StatisticsDataStore
+import com.duckduckgo.browser.feature.toggles.AndroidBrowserConfigFeature
 import com.duckduckgo.common.utils.AppUrl.ParamKey
 import com.duckduckgo.common.utils.AppUrl.ParamValue
+import com.duckduckgo.common.utils.device.DeviceInfo
+import com.duckduckgo.common.utils.device.DeviceInfo.FormFactor.PHONE
+import com.duckduckgo.common.utils.device.DeviceInfo.FormFactor.TABLET
 import com.duckduckgo.duckchat.api.DuckChat
 import com.duckduckgo.experiments.api.VariantManager
 import com.duckduckgo.feature.toggles.api.FakeFeatureToggleFactory
 import com.duckduckgo.feature.toggles.api.Toggle.State
-import com.duckduckgo.settings.api.SettingsPageFeature
-import org.junit.Assert.*
+import com.duckduckgo.referral.api.AppReferrer
+import com.duckduckgo.settings.api.SerpSettingsFeature
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,17 +50,19 @@ class DuckDuckGoRequestRewriterTest {
     private lateinit var testee: DuckDuckGoRequestRewriter
     private val mockStatisticsStore: StatisticsDataStore = mock()
     private val mockVariantManager: VariantManager = mock()
-    private val mockAppReferrerDataStore: AppReferrerDataStore = mock()
+    private val mockAppReferrer: AppReferrer = mock()
     private val duckChat: DuckChat = mock()
-    private val settingsPageFeature: SettingsPageFeature = FakeFeatureToggleFactory.create(SettingsPageFeature::class.java)
+    private val serpSettingsFeature: SerpSettingsFeature = FakeFeatureToggleFactory.create(SerpSettingsFeature::class.java)
     private val androidBrowserConfigFeature: AndroidBrowserConfigFeature = FakeFeatureToggleFactory.create(AndroidBrowserConfigFeature::class.java)
+    private val mockDeviceInfo: DeviceInfo = mock()
     private lateinit var builder: Uri.Builder
 
     @Before
     fun before() {
         whenever(mockVariantManager.getVariantKey()).thenReturn("")
-        whenever(mockAppReferrerDataStore.installedFromEuAuction).thenReturn(false)
+        whenever(mockAppReferrer.isInstalledFromEuAuction()).thenReturn(false)
         whenever(duckChat.isEnabled()).thenReturn(true)
+        whenever(mockDeviceInfo.formFactor()).thenReturn(PHONE)
 
         androidBrowserConfigFeature.hideDuckAiInSerpKillSwitch().setRawStoredState(State(true))
 
@@ -63,10 +70,11 @@ class DuckDuckGoRequestRewriterTest {
             DuckDuckGoUrlDetectorImpl(),
             mockStatisticsStore,
             mockVariantManager,
-            mockAppReferrerDataStore,
+            mockAppReferrer,
             duckChat,
             androidBrowserConfigFeature,
-            settingsPageFeature,
+            serpSettingsFeature,
+            mockDeviceInfo,
         )
         builder = Uri.Builder()
     }
@@ -81,11 +89,29 @@ class DuckDuckGoRequestRewriterTest {
 
     @Test
     fun whenAddingCustomParamsAndUserSourcedFromEuAuctionThenEuSourceParameterIsAdded() {
-        whenever(mockAppReferrerDataStore.installedFromEuAuction).thenReturn(true)
+        whenever(mockAppReferrer.isInstalledFromEuAuction()).thenReturn(true)
         testee.addCustomQueryParams(builder)
         val uri = builder.build()
         assertTrue(uri.queryParameterNames.contains(ParamKey.SOURCE))
         assertEquals("ddg_androideu", uri.getQueryParameter(ParamKey.SOURCE))
+    }
+
+    @Test
+    fun whenAddingCustomParamsAndNotEuAuctionAndPhoneThenSourceParameterIsAdded() {
+        whenever(mockAppReferrer.isInstalledFromEuAuction()).thenReturn(false)
+        whenever(mockDeviceInfo.formFactor()).thenReturn(PHONE)
+        testee.addCustomQueryParams(builder)
+        val uri = builder.build()
+        assertEquals(ParamValue.SOURCE, uri.getQueryParameter(ParamKey.SOURCE))
+    }
+
+    @Test
+    fun whenAddingCustomParamsAndNotEuAuctionAndTabletThenTabletSourceParameterIsAdded() {
+        whenever(mockAppReferrer.isInstalledFromEuAuction()).thenReturn(false)
+        whenever(mockDeviceInfo.formFactor()).thenReturn(TABLET)
+        testee.addCustomQueryParams(builder)
+        val uri = builder.build()
+        assertEquals(ParamValue.SOURCE_TABLET, uri.getQueryParameter(ParamKey.SOURCE))
     }
 
     @Test
@@ -157,7 +183,7 @@ class DuckDuckGoRequestRewriterTest {
 
     @Test
     fun whenSerpSettingsSyncIsEnabledThenDoNotHideDuckAi() {
-        settingsPageFeature.serpSettingsSync().setRawStoredState(State(true))
+        serpSettingsFeature.storeSerpSettings().setRawStoredState(State(true))
         whenever(duckChat.isEnabled()).thenReturn(false)
         androidBrowserConfigFeature.hideDuckAiInSerpKillSwitch().setRawStoredState(State(true))
 

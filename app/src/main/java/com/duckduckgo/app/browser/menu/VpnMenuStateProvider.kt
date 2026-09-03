@@ -16,8 +16,8 @@
 
 package com.duckduckgo.app.browser.menu
 
-import com.duckduckgo.app.browser.viewstate.VpnMenuState
-import com.duckduckgo.app.pixels.remoteconfig.AndroidBrowserConfigFeature
+import com.duckduckgo.browser.feature.toggles.AndroidBrowserConfigFeature
+import com.duckduckgo.browser.ui.browsermenu.VpnMenuState
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.AppScope
 import com.duckduckgo.networkprotection.api.NetworkProtectionState
@@ -48,7 +48,10 @@ class VpnMenuStateProviderImpl @Inject constructor(
             subscriptions.getEntitlementStatus(),
             networkProtectionState.getConnectionStateFlow(),
         ) { subscriptionStatus, entitlements, connectionState ->
-            if (!androidBrowserConfigFeature.vpnMenuItem().isEnabled()) {
+            if (!subscriptions.isEligible()) {
+                return@combine VpnMenuState.Hidden
+            }
+            if (!androidBrowserConfigFeature.vpnMenuItem().isEnabled() && !androidBrowserConfigFeature.vpnMenuItemInternational().isEnabled()) {
                 return@combine VpnMenuState.Hidden
             }
 
@@ -59,7 +62,7 @@ class VpnMenuStateProviderImpl @Inject constructor(
                 // User has subscription but no NetP entitlement
                 subscriptionStatus.isActive() -> VpnMenuState.Hidden
                 else -> {
-                    if (vpnMenuStore.canShowVpnMenuForNotSubscribed()) {
+                    if (vpnMenuStore.canShowVpnMenuForNotSubscribed() && subscriptions.isFreeTrialEligible()) {
                         VpnMenuState.NotSubscribed
                     } else {
                         VpnMenuState.NotSubscribedNoPill

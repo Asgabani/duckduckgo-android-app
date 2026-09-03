@@ -20,13 +20,15 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.webkit.WebViewFeature
 import com.duckduckgo.app.browser.api.WebViewCapabilityChecker
 import com.duckduckgo.app.browser.api.WebViewCapabilityChecker.WebViewCapability
+import com.duckduckgo.app.browser.api.WebViewCapabilityChecker.WebViewCapability.DeleteBrowsingData
 import com.duckduckgo.app.browser.api.WebViewCapabilityChecker.WebViewCapability.DocumentStartJavaScript
+import com.duckduckgo.app.browser.api.WebViewCapabilityChecker.WebViewCapability.MultiProfile
 import com.duckduckgo.app.browser.api.WebViewCapabilityChecker.WebViewCapability.WebMessageListener
 import com.duckduckgo.app.di.AppCoroutineScope
 import com.duckduckgo.app.lifecycle.MainProcessLifecycleObserver
-import com.duckduckgo.app.pixels.remoteconfig.AndroidBrowserConfigFeature
 import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.browser.api.WebViewVersionProvider
+import com.duckduckgo.browser.feature.toggles.AndroidBrowserConfigFeature
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.common.utils.extensions.compareSemanticVersion
 import com.duckduckgo.common.utils.plugins.pixel.PixelParamRemovalPlugin
@@ -54,6 +56,8 @@ class RealWebViewCapabilityChecker @Inject constructor(
         when (capability) {
             DocumentStartJavaScript -> isDocumentStartJavaScriptSupported()
             WebMessageListener -> isWebMessageListenerSupported()
+            DeleteBrowsingData -> isDeleteBrowsingDataSupported()
+            MultiProfile -> isMultiProfileSupported()
         }
 
     override fun onStart(owner: LifecycleOwner) {
@@ -67,7 +71,7 @@ class RealWebViewCapabilityChecker @Inject constructor(
                     "version" to webViewVersionProvider.getFullVersion(),
                     "multi_profile" to isMultiProfileSupported().toString(),
                     "delete_browsing_data" to isDeleteBrowsingDataSupported().toString(),
-                    "petal" to "true",
+                    Pixel.PixelParameter.PETAL to Pixel.PixelValues.PETAL_KANON,
                 )
                 pixel.fire(pixel = WebViewCapabilityPixelName.WEBVIEW_CAPABILITIES, parameters = params, type = Pixel.PixelType.Daily())
             }

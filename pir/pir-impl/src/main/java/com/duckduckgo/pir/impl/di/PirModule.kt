@@ -22,9 +22,9 @@ import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.common.utils.plugins.PluginPoint
 import com.duckduckgo.data.store.api.SharedPreferencesProvider
 import com.duckduckgo.di.scopes.AppScope
-import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep
-import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.OptOutStep
-import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.ScanStep
+import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStepActions
+import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStepActions.OptOutStepActions
+import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStepActions.ScanStepActions
 import com.duckduckgo.pir.impl.common.CaptchaResolver
 import com.duckduckgo.pir.impl.common.NativeBrokerActionHandler
 import com.duckduckgo.pir.impl.common.RealNativeBrokerActionHandler
@@ -49,6 +49,7 @@ import com.duckduckgo.pir.impl.scripts.models.PirSuccessResponse.GetCaptchaInfoR
 import com.duckduckgo.pir.impl.scripts.models.PirSuccessResponse.NavigateResponse
 import com.duckduckgo.pir.impl.scripts.models.PirSuccessResponse.SolveCaptchaResponse
 import com.duckduckgo.pir.impl.service.DbpService
+import com.duckduckgo.pir.impl.store.PirDataStore
 import com.duckduckgo.pir.impl.store.PirRepository
 import com.duckduckgo.pir.impl.store.RealPirDataStore
 import com.duckduckgo.pir.impl.store.RealPirRepository
@@ -69,8 +70,14 @@ class PirModule {
 
     @Provides
     @SingleInstanceIn(AppScope::class)
-    fun providePirRepository(
+    fun providePirDataStore(
         sharedPreferencesProvider: SharedPreferencesProvider,
+    ): PirDataStore = RealPirDataStore(sharedPreferencesProvider)
+
+    @Provides
+    @SingleInstanceIn(AppScope::class)
+    fun providePirRepository(
+        pirDataStore: PirDataStore,
         dispatcherProvider: DispatcherProvider,
         currentTimeProvider: CurrentTimeProvider,
         dbpService: DbpService,
@@ -79,7 +86,7 @@ class PirModule {
         pixelSender: PirPixelSender,
     ): PirRepository = RealPirRepository(
         dispatcherProvider,
-        RealPirDataStore(sharedPreferencesProvider),
+        pirDataStore,
         currentTimeProvider,
         databaseFactory,
         dbpService,
@@ -101,12 +108,14 @@ class PirModule {
         repository: PirRepository,
         dispatcherProvider: DispatcherProvider,
         captchaResolver: CaptchaResolver,
+        moshi: Moshi,
     ): NativeBrokerActionHandler {
         // Creates a new instance everytime is NativeBrokerActionHandler injected
         return RealNativeBrokerActionHandler(
             repository,
             dispatcherProvider,
             captchaResolver,
+            moshi,
         )
     }
 
@@ -142,11 +151,13 @@ class PirModule {
                     .withSubtype(BrokerAction.GetCaptchaInfo::class.java, "getCaptchaInfo")
                     .withSubtype(BrokerAction.SolveCaptcha::class.java, "solveCaptcha")
                     .withSubtype(BrokerAction.EmailConfirmation::class.java, "emailConfirmation")
-                    .withSubtype(BrokerAction.Condition::class.java, "condition"),
+                    .withSubtype(BrokerAction.Condition::class.java, "condition")
+                    .withSubtype(BrokerAction.GenerateEmail::class.java, "generateEmail")
+                    .withSubtype(BrokerAction.GetEmailData::class.java, "getEmailData"),
             ).add(
-                PolymorphicJsonAdapterFactory.of(BrokerStep::class.java, "stepType")
-                    .withSubtype(ScanStep::class.java, "scan")
-                    .withSubtype(OptOutStep::class.java, "optOut"),
+                PolymorphicJsonAdapterFactory.of(BrokerStepActions::class.java, "stepType")
+                    .withSubtype(ScanStepActions::class.java, "scan")
+                    .withSubtype(OptOutStepActions::class.java, "optOut"),
             ).add(
                 PolymorphicJsonAdapterFactory.of(PirSuccessResponse::class.java, "actionType")
                     .withSubtype(NavigateResponse::class.java, "navigate")

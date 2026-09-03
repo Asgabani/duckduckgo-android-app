@@ -19,11 +19,14 @@ package com.duckduckgo.duckchat.impl.subscription
 import app.cash.turbine.test
 import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.common.test.CoroutineTestRule
+import com.duckduckgo.duckchat.impl.messaging.fakes.FakeDuckChatInternal
 import com.duckduckgo.duckchat.impl.pixel.DuckChatPixelName.DUCK_CHAT_PAID_OPEN_DUCK_AI_CLICKED
 import com.duckduckgo.duckchat.impl.pixel.DuckChatPixelName.DUCK_CHAT_PAID_SETTINGS_OPENED
 import com.duckduckgo.duckchat.impl.subscription.DuckAiPaidSettingsViewModel.Command
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -36,6 +39,7 @@ class DuckAiPaidSettingsViewModelTest {
     val coroutineTestRule: CoroutineTestRule = CoroutineTestRule()
 
     private val mockPixel: Pixel = mock()
+    private val fakeDuckChatInternal = FakeDuckChatInternal(enabled = true)
 
     private lateinit var testee: DuckAiPaidSettingsViewModel
 
@@ -43,7 +47,7 @@ class DuckAiPaidSettingsViewModelTest {
     fun setUp() {
         testee = DuckAiPaidSettingsViewModel(
             pixel = mockPixel,
-            dispatchers = coroutineTestRule.testDispatcherProvider,
+            duckChat = fakeDuckChatInternal,
         )
     }
 
@@ -88,5 +92,43 @@ class DuckAiPaidSettingsViewModelTest {
         val command = Command.LaunchLearnMoreWebPage(url = customUrl, titleId = customTitleId)
         assertEquals(customUrl, command.url)
         assertEquals(customTitleId, command.titleId)
+    }
+
+    @Test
+    fun `when duck chat is enabled then viewState is emitted with isDuckChatEnabled true`() = runTest {
+        val enabledFakeDuckChat = FakeDuckChatInternal(enabled = true)
+
+        val viewModel = DuckAiPaidSettingsViewModel(
+            pixel = mockPixel,
+            duckChat = enabledFakeDuckChat,
+        )
+
+        viewModel.viewState.test {
+            val state = expectMostRecentItem()
+            assertTrue(state!!.isDuckAIEnabled)
+        }
+    }
+
+    @Test
+    fun `when duck chat is disabled then viewState is emitted with isDuckChatEnabled false`() = runTest {
+        val disabledFakeDuckChat = FakeDuckChatInternal(enabled = false)
+
+        val viewModel = DuckAiPaidSettingsViewModel(
+            pixel = mockPixel,
+            duckChat = disabledFakeDuckChat,
+        )
+
+        viewModel.viewState.test {
+            val state = expectMostRecentItem()
+            assertFalse(state!!.isDuckAIEnabled)
+        }
+    }
+
+    @Test
+    fun `when onEnableInSettingsSelected is called then OpenDuckChatSettings command is emitted`() = runTest {
+        testee.commands.test {
+            testee.onEnableInSettingsSelected()
+            assertEquals(Command.OpenDuckChatSettings, awaitItem())
+        }
     }
 }

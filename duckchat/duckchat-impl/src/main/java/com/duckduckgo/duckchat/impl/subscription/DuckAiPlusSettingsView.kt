@@ -41,6 +41,7 @@ import dagger.android.support.AndroidSupportInjection
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
+import com.duckduckgo.duckchat.impl.R as DuckChatR
 
 @InjectWith(ViewScope::class)
 class DuckAiPlusSettingsView @JvmOverloads constructor(
@@ -95,8 +96,8 @@ class DuckAiPlusSettingsView @JvmOverloads constructor(
             when (viewState.settingState) {
                 is SettingState.Enabled -> {
                     isVisible = true
-                    setStatus(isOn = true)
-                    setLeadingIconResource(com.duckduckgo.mobile.android.R.drawable.ic_ai_chat_color_24)
+                    setStatus(isOn = viewState.isDuckAiEnabled)
+                    setLeadingIconResource(DuckChatR.drawable.ic_duckduckgo_ai_color_24)
                     isClickable = true
                     setClickListener { viewModel.onDuckAiClicked() }
                 }
@@ -105,7 +106,7 @@ class DuckAiPlusSettingsView @JvmOverloads constructor(
                     isClickable = false
                     setStatus(isOn = false)
                     setClickListener(null)
-                    setLeadingIconResource(com.duckduckgo.mobile.android.R.drawable.ic_ai_chat_grayscale_color_24)
+                    setLeadingIconResource(DuckChatR.drawable.ic_duckduckgo_ai_grayscale_color_24)
                 }
                 SettingState.Hidden -> isGone = true
             }

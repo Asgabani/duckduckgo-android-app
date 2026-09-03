@@ -27,11 +27,11 @@ import com.duckduckgo.di.scopes.ViewScope
 import com.duckduckgo.subscriptions.api.Product.DuckAiPlus
 import com.duckduckgo.subscriptions.api.SubscriptionStatus
 import com.duckduckgo.subscriptions.api.SubscriptionStatus.UNKNOWN
-import com.duckduckgo.subscriptions.impl.PrivacyProFeature
 import com.duckduckgo.subscriptions.impl.SubscriptionsConstants.MONTHLY_PLAN_ROW
 import com.duckduckgo.subscriptions.impl.SubscriptionsConstants.MONTHLY_PLAN_US
 import com.duckduckgo.subscriptions.impl.SubscriptionsConstants.YEARLY_PLAN_ROW
 import com.duckduckgo.subscriptions.impl.SubscriptionsConstants.YEARLY_PLAN_US
+import com.duckduckgo.subscriptions.impl.SubscriptionsFeature
 import com.duckduckgo.subscriptions.impl.SubscriptionsManager
 import com.duckduckgo.subscriptions.impl.pixels.SubscriptionPixelSender
 import com.duckduckgo.subscriptions.impl.settings.views.ProSettingViewModel.Command.OpenBuyScreen
@@ -56,7 +56,7 @@ import javax.inject.Inject
 class ProSettingViewModel @Inject constructor(
     private val subscriptionsManager: SubscriptionsManager,
     private val pixelSender: SubscriptionPixelSender,
-    private val privacyProFeature: PrivacyProFeature,
+    private val subscriptionsFeature: SubscriptionsFeature,
     private val dispatcherProvider: DispatcherProvider,
 ) : ViewModel(), DefaultLifecycleObserver {
 
@@ -73,6 +73,7 @@ class ProSettingViewModel @Inject constructor(
         val region: SubscriptionRegion? = null,
         val duckAiPlusAvailable: Boolean = false,
         val freeTrialEligible: Boolean = false,
+        val blackFridayOfferAvailable: Boolean = false,
     ) {
         enum class SubscriptionRegion { US, ROW }
     }
@@ -99,7 +100,7 @@ class ProSettingViewModel @Inject constructor(
         subscriptionsManager.subscriptionStatus
             .distinctUntilChanged()
             .onEach { subscriptionStatus ->
-                withContext(dispatcherProvider.io()) {
+                val newViewState = withContext(dispatcherProvider.io()) {
                     val offer = subscriptionsManager.getSubscriptionOffer().firstOrNull()
                     val region = when (offer?.planId) {
                         MONTHLY_PLAN_ROW, YEARLY_PLAN_ROW -> SubscriptionRegion.ROW
@@ -107,20 +108,20 @@ class ProSettingViewModel @Inject constructor(
                         else -> null
                     }
 
-                    val duckAiEnabled = privacyProFeature.duckAiPlus().isEnabled()
+                    val duckAiEnabled = subscriptionsFeature.duckAiPlus().isEnabled()
                     val duckAiAvailable = duckAiEnabled && offer?.features?.any { feature ->
                         feature == DuckAiPlus.value
                     } ?: false
 
-                    _viewState.emit(
-                        viewState.value.copy(
-                            status = subscriptionStatus,
-                            region = region,
-                            duckAiPlusAvailable = duckAiAvailable,
-                            freeTrialEligible = subscriptionsManager.isFreeTrialEligible(),
-                        ),
+                    viewState.value.copy(
+                        status = subscriptionStatus,
+                        region = region,
+                        duckAiPlusAvailable = duckAiAvailable,
+                        freeTrialEligible = subscriptionsManager.isFreeTrialEligible(),
+                        blackFridayOfferAvailable = subscriptionsManager.blackFridayOfferAvailable(),
                     )
                 }
+                _viewState.emit(newViewState)
             }.launchIn(viewModelScope)
     }
 

@@ -21,27 +21,35 @@ import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cash.turbine.test
 import com.duckduckgo.app.appearance.AppearanceViewModel.Command
-import com.duckduckgo.app.browser.omnibar.OmnibarFeatureRepository
+import com.duckduckgo.app.browser.api.OmnibarRepository
+import com.duckduckgo.app.browser.omnibar.OmnibarType
+import com.duckduckgo.app.browser.urldisplay.UrlDisplayRepository
 import com.duckduckgo.app.icon.api.AppIcon
 import com.duckduckgo.app.pixels.AppPixelName
 import com.duckduckgo.app.settings.clear.FireAnimation
 import com.duckduckgo.app.settings.db.SettingsDataStore
 import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.app.tabs.store.TabSwitcherDataStore
-import com.duckduckgo.browser.ui.omnibar.OmnibarType
 import com.duckduckgo.common.test.CoroutineTestRule
 import com.duckduckgo.common.ui.DuckDuckGoTheme
+import com.duckduckgo.common.ui.store.AppBrandDesignUpdateToggles
 import com.duckduckgo.common.ui.store.AppTheme
 import com.duckduckgo.common.ui.store.ThemingDataStore
+import com.duckduckgo.feature.toggles.api.Toggle
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -64,6 +72,9 @@ internal class AppearanceViewModelTest {
     private lateinit var mockAppSettingsDataStore: SettingsDataStore
 
     @Mock
+    private lateinit var mockUrlDisplayRepository: UrlDisplayRepository
+
+    @Mock
     private lateinit var mockPixel: Pixel
 
     @Mock
@@ -73,7 +84,16 @@ internal class AppearanceViewModelTest {
     private lateinit var mockTabSwitcherDataStore: TabSwitcherDataStore
 
     @Mock
-    private lateinit var mockOmnibarFeatureRepository: OmnibarFeatureRepository
+    private lateinit var mockOmnibarFeatureRepository: OmnibarRepository
+
+    @Mock
+    private lateinit var mockAddressBarTrackersAnimationManager: com.duckduckgo.app.browser.animations.AddressBarTrackersAnimationManager
+
+    @Mock
+    private lateinit var mockAppBrandDesignUpdateToggles: AppBrandDesignUpdateToggles
+
+    private val enabledToggle: Toggle = mock { on { it.isEnabled() } doReturn true }
+    private val disabledToggle: Toggle = mock { on { it.isEnabled() } doReturn false }
 
     @SuppressLint("DenyListedApi")
     @Before
@@ -84,8 +104,13 @@ internal class AppearanceViewModelTest {
         whenever(mockThemeSettingsDataStore.theme).thenReturn(DuckDuckGoTheme.SYSTEM_DEFAULT)
         whenever(mockAppSettingsDataStore.selectedFireAnimation).thenReturn(FireAnimation.HeroFire)
         whenever(mockAppSettingsDataStore.omnibarType).thenReturn(OmnibarType.SINGLE_TOP)
+        whenever(mockUrlDisplayRepository.isFullUrlEnabled).thenReturn(flowOf(true))
         whenever(mockTabSwitcherDataStore.isTrackersAnimationInfoTileHidden()).thenReturn(flowOf(false))
-        whenever(mockOmnibarFeatureRepository.isSplitOmnibarEnabled).thenReturn(false)
+        whenever(mockOmnibarFeatureRepository.isSplitOmnibarAvailable).thenReturn(false)
+        whenever(mockAppBrandDesignUpdateToggles.appIcon()).thenReturn(disabledToggle)
+        runTest {
+            whenever(mockAddressBarTrackersAnimationManager.isFeatureEnabled()).thenReturn(false)
+        }
 
         initializeViewModel()
     }
@@ -95,9 +120,12 @@ internal class AppearanceViewModelTest {
             AppearanceViewModel(
                 mockThemeSettingsDataStore,
                 mockAppSettingsDataStore,
+                mockUrlDisplayRepository,
                 mockPixel,
                 coroutineTestRule.testDispatcherProvider,
                 mockTabSwitcherDataStore,
+                mockAddressBarTrackersAnimationManager,
+                mockAppBrandDesignUpdateToggles,
                 mockOmnibarFeatureRepository,
             )
     }
@@ -110,6 +138,29 @@ internal class AppearanceViewModelTest {
 
                 assertEquals(DuckDuckGoTheme.SYSTEM_DEFAULT, value.theme)
                 assertEquals(AppIcon.DEFAULT, value.appIcon)
+
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenAppIconFlagDisabledThenAppIconSettingIsNotShownFirst() =
+        runTest {
+            testee.viewState().test {
+                assertFalse(awaitItem().showAppIconSettingFirst)
+
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenAppIconFlagEnabledThenAppIconSettingIsShownFirst() =
+        runTest {
+            whenever(mockAppBrandDesignUpdateToggles.appIcon()).thenReturn(enabledToggle)
+            initializeViewModel()
+
+            testee.viewState().test {
+                assertTrue(awaitItem().showAppIconSettingFirst)
 
                 cancelAndConsumeRemainingEvents()
             }
@@ -253,7 +304,7 @@ internal class AppearanceViewModelTest {
         runTest {
             val enabled = true
             testee.onFullUrlSettingChanged(enabled)
-            verify(mockAppSettingsDataStore).isFullUrlEnabled = enabled
+            verify(mockUrlDisplayRepository).setFullUrlEnabled(enabled)
             val params = mapOf(Pixel.PixelParameter.IS_ENABLED to enabled.toString())
             verify(mockPixel).fire(
                 AppPixelName.SETTINGS_APPEARANCE_IS_FULL_URL_OPTION_TOGGLED,
@@ -268,7 +319,7 @@ internal class AppearanceViewModelTest {
         runTest {
             val enabled = false
             testee.onFullUrlSettingChanged(enabled)
-            verify(mockAppSettingsDataStore).isFullUrlEnabled = enabled
+            verify(mockUrlDisplayRepository).setFullUrlEnabled(enabled)
             val params = mapOf(Pixel.PixelParameter.IS_ENABLED to enabled.toString())
             verify(mockPixel).fire(
                 AppPixelName.SETTINGS_APPEARANCE_IS_FULL_URL_OPTION_TOGGLED,
@@ -309,6 +360,178 @@ internal class AppearanceViewModelTest {
         }
 
     @Test
+    fun `when tracker count in address bar is enabled then setting enabled`() =
+        runTest {
+            val enabled = true
+            testee.onShowTrackersCountInAddressBarChanged(enabled)
+            verify(mockAppSettingsDataStore).showTrackersCountInAddressBar = enabled
+            val params = mapOf(Pixel.PixelParameter.IS_ENABLED to enabled.toString())
+            verify(mockPixel).fire(
+                AppPixelName.SETTINGS_APPEARANCE_IS_TRACKER_COUNT_IN_ADDRESS_BAR_TOGGLED,
+                params,
+                emptyMap(),
+                Pixel.PixelType.Count,
+            )
+        }
+
+    @Test
+    fun `when tracker count in address bar is disabled then setting disabled`() =
+        runTest {
+            val enabled = false
+            testee.onShowTrackersCountInAddressBarChanged(enabled)
+            verify(mockAppSettingsDataStore).showTrackersCountInAddressBar = enabled
+            val params = mapOf(Pixel.PixelParameter.IS_ENABLED to enabled.toString())
+            verify(mockPixel).fire(
+                AppPixelName.SETTINGS_APPEARANCE_IS_TRACKER_COUNT_IN_ADDRESS_BAR_TOGGLED,
+                params,
+                emptyMap(),
+                Pixel.PixelType.Count,
+            )
+        }
+
+    @Test
+    fun `when address bar trackers animation feature is disabled then toggle should be hidden`() =
+        runTest {
+            whenever(mockAddressBarTrackersAnimationManager.isFeatureEnabled()).thenReturn(false)
+            initializeViewModel()
+
+            testee.viewState().test {
+                val value = expectMostRecentItem()
+                assertEquals(false, value.shouldShowAddressBarTrackersAnimationItem)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `when address bar trackers animation feature is enabled then toggle should be visible`() =
+        runTest {
+            whenever(mockAddressBarTrackersAnimationManager.isFeatureEnabled()).thenReturn(true)
+            initializeViewModel()
+
+            testee.viewState().test {
+                val value = expectMostRecentItem()
+                assertEquals(true, value.shouldShowAddressBarTrackersAnimationItem)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `when tracker count in address bar setting is stored then it persists correctly`() =
+        runTest {
+            whenever(mockAppSettingsDataStore.showTrackersCountInAddressBar).thenReturn(false)
+            initializeViewModel()
+
+            testee.viewState().test {
+                val value = expectMostRecentItem()
+                assertEquals(false, value.isAddressBarTrackersAnimationEnabled)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `when tracker count in address bar is enabled by default then viewState reflects it`() =
+        runTest {
+            whenever(mockAppSettingsDataStore.showTrackersCountInAddressBar).thenReturn(true)
+            initializeViewModel()
+
+            testee.viewState().test {
+                val value = expectMostRecentItem()
+                assertEquals(true, value.isAddressBarTrackersAnimationEnabled)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `when both feature flag and user preference are enabled then viewState shows both enabled`() =
+        runTest {
+            whenever(mockAddressBarTrackersAnimationManager.isFeatureEnabled()).thenReturn(true)
+            whenever(mockAppSettingsDataStore.showTrackersCountInAddressBar).thenReturn(true)
+            initializeViewModel()
+
+            testee.viewState().test {
+                val value = expectMostRecentItem()
+                assertEquals(true, value.shouldShowAddressBarTrackersAnimationItem)
+                assertEquals(true, value.isAddressBarTrackersAnimationEnabled)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `when feature flag is enabled but user preference is disabled then toggle is visible but unchecked`() =
+        runTest {
+            whenever(mockAddressBarTrackersAnimationManager.isFeatureEnabled()).thenReturn(true)
+            whenever(mockAppSettingsDataStore.showTrackersCountInAddressBar).thenReturn(false)
+            initializeViewModel()
+
+            testee.viewState().test {
+                val value = expectMostRecentItem()
+                assertEquals(true, value.shouldShowAddressBarTrackersAnimationItem) // Toggle visible
+                assertEquals(false, value.isAddressBarTrackersAnimationEnabled) // But unchecked
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenLightThemeThenCanForceDarkModeIsFalse() =
+        runTest {
+            whenever(mockThemeSettingsDataStore.theme).thenReturn(DuckDuckGoTheme.LIGHT)
+            initializeViewModel()
+
+            testee.viewState().test {
+                assertEquals(false, expectMostRecentItem().canForceDarkMode)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenDarkThemeThenCanForceDarkModeIsTrue() =
+        runTest {
+            whenever(mockThemeSettingsDataStore.theme).thenReturn(DuckDuckGoTheme.DARK)
+            initializeViewModel()
+
+            testee.viewState().test {
+                assertEquals(true, expectMostRecentItem().canForceDarkMode)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenSystemDefaultThemeThenCanForceDarkModeIsTrue() =
+        runTest {
+            whenever(mockThemeSettingsDataStore.theme).thenReturn(DuckDuckGoTheme.SYSTEM_DEFAULT)
+            initializeViewModel()
+
+            testee.viewState().test {
+                assertEquals(true, expectMostRecentItem().canForceDarkMode)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenThemeChangedToLightThenCanForceDarkModeIsFalse() =
+        runTest {
+            givenThemeSelected(DuckDuckGoTheme.DARK)
+
+            testee.viewState().test {
+                testee.onThemeSelected(DuckDuckGoTheme.LIGHT)
+                assertEquals(false, expectMostRecentItem().canForceDarkMode)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenThemeChangedFromLightToDarkThenCanForceDarkModeIsTrue() =
+        runTest {
+            givenThemeSelected(DuckDuckGoTheme.LIGHT)
+
+            testee.viewState().test {
+                testee.onThemeSelected(DuckDuckGoTheme.DARK)
+                assertEquals(true, expectMostRecentItem().canForceDarkMode)
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
     fun whenInitialisedAndLightThemeThenViewStateEmittedWithProperValues() =
         runTest {
             whenever(mockThemeSettingsDataStore.theme).thenReturn(DuckDuckGoTheme.LIGHT)
@@ -322,6 +545,190 @@ internal class AppearanceViewModelTest {
                 assertEquals(DuckDuckGoTheme.LIGHT, value.theme)
                 assertEquals(AppIcon.DEFAULT, value.appIcon)
                 assertEquals(false, value.forceDarkModeEnabled)
+
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenSplitOmnibarAvailableThenViewStateShowsSetting() =
+        runTest {
+            whenever(mockOmnibarFeatureRepository.isSplitOmnibarAvailable).thenReturn(true)
+            initializeViewModel()
+
+            testee.viewState().test {
+                val value = expectMostRecentItem()
+
+                assertEquals(true, value.shouldShowSplitOmnibarSettings)
+
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenSplitOmnibarNotAvailableThenViewStateHidesSetting() =
+        runTest {
+            whenever(mockOmnibarFeatureRepository.isSplitOmnibarAvailable).thenReturn(false)
+            initializeViewModel()
+
+            testee.viewState().test {
+                val value = expectMostRecentItem()
+
+                assertEquals(false, value.shouldShowSplitOmnibarSettings)
+
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `when url display repository emits true then view state reflects full url enabled`() = runTest {
+        // Given: Repository flow emits true
+        whenever(mockUrlDisplayRepository.isFullUrlEnabled).thenReturn(flowOf(true))
+        initializeViewModel()
+
+        // When: Collect view state
+        testee.viewState().test {
+            val viewState = awaitItem()
+
+            // Then: View state shows full URL enabled
+            assertEquals(true, viewState.isFullUrlEnabled)
+
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `when url display repository emits false then view state reflects full url disabled`() = runTest {
+        // Given: Repository flow emits false
+        whenever(mockUrlDisplayRepository.isFullUrlEnabled).thenReturn(flowOf(false))
+        initializeViewModel()
+
+        // When: Collect view state
+        testee.viewState().test {
+            val viewState = awaitItem()
+
+            // Then: View state shows full URL disabled
+            assertEquals(false, viewState.isFullUrlEnabled)
+
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `when url display repository flow emits new value then view state updates`() = runTest {
+        // Given: Repository flow that emits multiple values
+        val urlDisplayFlow = MutableStateFlow(true)
+        whenever(mockUrlDisplayRepository.isFullUrlEnabled).thenReturn(urlDisplayFlow)
+        initializeViewModel()
+
+        // When: Collect view state and change repository value
+        testee.viewState().test {
+            // First emission
+            assertEquals(true, awaitItem().isFullUrlEnabled)
+
+            // Change the flow value
+            urlDisplayFlow.value = false
+
+            // Then: View state updates with new value
+            assertEquals(false, awaitItem().isFullUrlEnabled)
+
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `when url display changes multiple times then view state reflects each change`() = runTest {
+        // Given: Repository flow that can emit multiple values
+        val urlDisplayFlow = MutableStateFlow(false)
+        whenever(mockUrlDisplayRepository.isFullUrlEnabled).thenReturn(urlDisplayFlow)
+        initializeViewModel()
+
+        // When: Collect view state and toggle multiple times
+        testee.viewState().test {
+            assertEquals(false, awaitItem().isFullUrlEnabled)
+
+            urlDisplayFlow.value = true
+            assertEquals(true, awaitItem().isFullUrlEnabled)
+
+            urlDisplayFlow.value = false
+            assertEquals(false, awaitItem().isFullUrlEnabled)
+
+            urlDisplayFlow.value = true
+            assertEquals(true, awaitItem().isFullUrlEnabled)
+
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `when url display repository flow updates then other view state properties remain unchanged`() = runTest {
+        // Given: Repository flow changes
+        val urlDisplayFlow = MutableStateFlow(true)
+        whenever(mockUrlDisplayRepository.isFullUrlEnabled).thenReturn(urlDisplayFlow)
+        whenever(mockThemeSettingsDataStore.theme).thenReturn(DuckDuckGoTheme.DARK)
+        whenever(mockAppSettingsDataStore.appIcon).thenReturn(AppIcon.BLUE)
+        initializeViewModel()
+
+        // When: URL display changes
+        testee.viewState().test {
+            val initialState = awaitItem()
+            assertEquals(true, initialState.isFullUrlEnabled)
+            assertEquals(DuckDuckGoTheme.DARK, initialState.theme)
+            assertEquals(AppIcon.BLUE, initialState.appIcon)
+
+            urlDisplayFlow.value = false
+
+            // Then: Only isFullUrlEnabled changes, other properties remain
+            val updatedState = awaitItem()
+            assertEquals(false, updatedState.isFullUrlEnabled)
+            assertEquals(DuckDuckGoTheme.DARK, updatedState.theme)
+            assertEquals(AppIcon.BLUE, updatedState.appIcon)
+
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun whenSystemDefaultThemeIsLightAndUserSelectsLightThenUpdatePreference() =
+        runTest {
+            // Given: System default is set, but system is in light mode, so the effective theme is LIGHT
+            // However, the stored preference is still SYSTEM_DEFAULT
+            whenever(mockThemeSettingsDataStore.theme).thenReturn(DuckDuckGoTheme.LIGHT)
+            whenever(mockThemeSettingsDataStore.isCurrentlySelected(DuckDuckGoTheme.LIGHT)).thenReturn(false)
+            initializeViewModel()
+
+            testee.commands().test {
+                // When: User explicitly selects LIGHT theme (wants to lock it to light, not follow system)
+                testee.onThemeSelected(DuckDuckGoTheme.LIGHT)
+
+                // Then: Preference is updated to LIGHT and pixel is fired
+                verify(mockThemeSettingsDataStore).theme = DuckDuckGoTheme.LIGHT
+                verify(mockPixel).fire(AppPixelName.SETTINGS_THEME_TOGGLED_LIGHT)
+
+                assertEquals(Command.UpdateTheme, awaitItem())
+
+                cancelAndConsumeRemainingEvents()
+            }
+        }
+
+    @Test
+    fun whenSystemDefaultThemeIsDarkAndUserSelectsDarkThenUpdatePreference() =
+        runTest {
+            // Given: System default is set, but system is in dark mode, so the effective theme is DARK
+            // However, the stored preference is still SYSTEM_DEFAULT
+            whenever(mockThemeSettingsDataStore.theme).thenReturn(DuckDuckGoTheme.DARK)
+            whenever(mockThemeSettingsDataStore.isCurrentlySelected(DuckDuckGoTheme.DARK)).thenReturn(false)
+            initializeViewModel()
+
+            testee.commands().test {
+                // When: User explicitly selects DARK theme (wants to lock it to dark, not follow system)
+                testee.onThemeSelected(DuckDuckGoTheme.DARK)
+
+                // Then: Preference is updated to DARK and pixel is fired
+                verify(mockThemeSettingsDataStore).theme = DuckDuckGoTheme.DARK
+                verify(mockPixel).fire(AppPixelName.SETTINGS_THEME_TOGGLED_DARK)
+
+                assertEquals(Command.UpdateTheme, awaitItem())
 
                 cancelAndConsumeRemainingEvents()
             }

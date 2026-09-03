@@ -20,7 +20,31 @@ import com.duckduckgo.app.cta.ui.DaxBubbleCta.DaxDialogIntroOption
 
 interface OnboardingStore {
     var onboardingDialogJourney: String?
+    var linearPlanWidgetPromptShown: Boolean
 
     fun getSearchOptions(): List<DaxDialogIntroOption>
+    fun getChatSuggestions(): List<DaxDialogIntroOption>
     fun getSitesOptions(): List<DaxDialogIntroOption>
+    fun storeInputScreenSelection(selected: Boolean)
+    fun getInputScreenSelection(): Boolean?
+    fun isInputScreenSelectionOverriddenByUser(): Boolean
+    fun setInputScreenSelectionOverriddenByUser()
+    fun setDuckAiOnboardingFlow()
+    fun isDuckAiOnboardingFlow(): Boolean
+    fun setSegmentedOnboardingPath(path: SegmentedOnboardingPath?)
+
+    /**
+     * The segmented path the user is on, but only once that path has opted into the input screen. The
+     * search path only does so if the user enabled the toggle; the AI path always does. Null everywhere
+     * else, including a search path left without the toggle.
+     */
+    fun getSegmentedPathWithAiInput(): SegmentedOnboardingPath?
+}
+
+/**
+ * The branch the user picked on the download reason step. Only enumerates a subset of paths that can have side effects on contextual CTAs.
+ */
+enum class SegmentedOnboardingPath {
+    SEARCH,
+    AI,
 }

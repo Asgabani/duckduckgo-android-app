@@ -16,21 +16,32 @@
 
 package com.duckduckgo.subscriptions.impl.wideevents
 
+import com.duckduckgo.app.di.ProcessName
 import com.duckduckgo.app.statistics.wideevents.CleanupPolicy.OnProcessStart
 import com.duckduckgo.app.statistics.wideevents.FlowStatus
 import com.duckduckgo.app.statistics.wideevents.WideEventClient
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.AppScope
+import com.duckduckgo.networkprotection.api.NetworkProtectionState
 import com.duckduckgo.subscriptions.api.SubscriptionStatus
-import com.duckduckgo.subscriptions.impl.PrivacyProFeature
+import com.duckduckgo.subscriptions.impl.SubscriptionsFeature
 import com.squareup.anvil.annotations.ContributesBinding
 import dagger.Lazy
 import dagger.SingleInstanceIn
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import java.io.Closeable
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 interface AuthTokenRefreshWideEvent {
-    suspend fun onStart(subscriptionStatus: SubscriptionStatus)
+    suspend fun onStart(
+        subscriptionStatus: SubscriptionStatus,
+        serializationEnabled: Boolean,
+    )
+
+    suspend fun onCrossProcessLockAcquired(result: Result<Closeable>)
     suspend fun onTokenRead()
     suspend fun onJwksFetched()
     suspend fun onTokensFetched()
@@ -38,7 +49,12 @@ interface AuthTokenRefreshWideEvent {
     suspend fun onTokensValidated()
     suspend fun onUnknownAccountError()
     suspend fun onPlayLoginSuccess()
-    suspend fun onPlayLoginFailure(signedOut: Boolean, refreshException: Exception, loginError: String)
+    suspend fun onPlayLoginFailure(
+        signedOut: Boolean,
+        refreshException: Exception,
+        loginError: String,
+    )
+
     suspend fun onSuccess()
     suspend fun onFailure(e: Exception)
 }
@@ -47,32 +63,62 @@ interface AuthTokenRefreshWideEvent {
 @ContributesBinding(AppScope::class)
 class AuthTokenRefreshWideEventImpl @Inject constructor(
     private val wideEventClient: WideEventClient,
-    private val privacyProFeature: Lazy<PrivacyProFeature>,
+    private val subscriptionsFeature: Lazy<SubscriptionsFeature>,
     private val dispatchers: DispatcherProvider,
+    private val networkProtectionState: Lazy<NetworkProtectionState>,
+    @ProcessName val processName: String,
 ) : AuthTokenRefreshWideEvent {
 
     private var ongoingTokenRefreshWideEventId: Long? = null
 
-    override suspend fun onStart(subscriptionStatus: SubscriptionStatus) {
+    override suspend fun onStart(
+        subscriptionStatus: SubscriptionStatus,
+        serializationEnabled: Boolean,
+    ) {
         if (!isFeatureEnabled()) return
 
         ongoingTokenRefreshWideEventId?.let { wideEventId ->
             wideEventClient.intervalEnd(wideEventId = wideEventId, key = INTERVAL_TOTAL_DURATION)
             wideEventClient.flowFinish(wideEventId = wideEventId, status = FlowStatus.Unknown)
         }
-
         ongoingTokenRefreshWideEventId = wideEventClient
             .flowStart(
                 name = AUTH_TOKEN_REFRESH_FEATURE_NAME,
                 cleanupPolicy = OnProcessStart(ignoreIfIntervalTimeoutPresent = false),
                 metadata = mapOf(
                     KEY_SUBSCRIPTION_STATUS to subscriptionStatus.statusName,
+                    KEY_NETP_IS_ENABLED to runCatching { networkProtectionState.get().isEnabled().toString() }.getOrDefault(""),
+                    KEY_NETP_IS_RUNNING to runCatching { networkProtectionState.get().isRunning().toString() }.getOrDefault(""),
+                    KEY_PROCESS_NAME to processName,
+                    KEY_SERIALIZATION_ENABLED to serializationEnabled.toString(),
                 ),
             )
             .getOrNull()
             ?.also { wideEventId ->
                 wideEventClient.intervalStart(wideEventId = wideEventId, key = INTERVAL_TOTAL_DURATION)
+                if (serializationEnabled) {
+                    wideEventClient.intervalStart(wideEventId = wideEventId, key = INTERVAL_LOCK_WAIT, buckets = LOCK_WAIT_BUCKETS)
+                }
             }
+    }
+
+    override suspend fun onCrossProcessLockAcquired(result: Result<Closeable>) {
+        if (!isFeatureEnabled()) return
+        ongoingTokenRefreshWideEventId?.let { wideEventId ->
+            wideEventClient.intervalEnd(wideEventId = wideEventId, key = INTERVAL_LOCK_WAIT)
+            wideEventClient.flowStep(
+                wideEventId = wideEventId,
+                stepName = STEP_LOCK_ACQUIRE,
+                success = result.isSuccess,
+                metadata = mapOf(KEY_LOCK_OUTCOME to result.toOutcomeValue()),
+            )
+        }
+    }
+
+    private fun Result<Closeable>.toOutcomeValue(): String = when {
+        isSuccess -> "acquired"
+        exceptionOrNull() is TimeoutCancellationException -> "timeout"
+        else -> "error"
     }
 
     override suspend fun onTokenRead() {
@@ -123,7 +169,11 @@ class AuthTokenRefreshWideEventImpl @Inject constructor(
         }
     }
 
-    override suspend fun onPlayLoginFailure(signedOut: Boolean, refreshException: Exception, loginError: String) {
+    override suspend fun onPlayLoginFailure(
+        signedOut: Boolean,
+        refreshException: Exception,
+        loginError: String,
+    ) {
         if (!isFeatureEnabled()) return
         ongoingTokenRefreshWideEventId?.let { wideEventId ->
             wideEventClient.flowStep(
@@ -133,7 +183,11 @@ class AuthTokenRefreshWideEventImpl @Inject constructor(
                 metadata = mapOf(KEY_PLAY_LOGIN_ERROR to loginError),
             )
             wideEventClient.intervalEnd(wideEventId = wideEventId, key = INTERVAL_TOTAL_DURATION)
-            wideEventClient.flowFinish(wideEventId = wideEventId, status = FlowStatus.Failure(reason = refreshException.toErrorString()))
+            wideEventClient.flowFinish(
+                wideEventId = wideEventId,
+                status = FlowStatus.Failure(reason = refreshException.toErrorString()),
+                metadata = mapOf(KEY_SIGNED_OUT to signedOut.toString()),
+            )
             ongoingTokenRefreshWideEventId = null
         }
     }
@@ -169,27 +223,36 @@ class AuthTokenRefreshWideEventImpl @Inject constructor(
     }
 
     private suspend fun isFeatureEnabled(): Boolean = withContext(dispatchers.io()) {
-        privacyProFeature.get().sendAuthTokenRefreshWideEvent().isEnabled()
+        subscriptionsFeature.get().sendAuthTokenRefreshWideEvent().isEnabled()
     }
 
     private companion object {
         const val AUTH_TOKEN_REFRESH_FEATURE_NAME = "auth-token-refresh"
 
+        const val STEP_LOCK_ACQUIRE = "lock_acquire"
         const val STEP_TOKEN_READ = "token_read"
         const val STEP_JWKS_FETCH = "jwks_fetch"
         const val STEP_TOKEN_REQUEST = "token_request"
         const val STEP_TOKEN_VALIDATION = "token_validation"
         const val STEP_PLAY_LOGIN = "play_login"
 
+        const val INTERVAL_LOCK_WAIT = "token_refresh_lock_wait_ms_bucketed"
         const val INTERVAL_GET_JWKS = "fetch_jwks_latency_ms_bucketed"
         const val INTERVAL_GET_TOKENS = "refresh_access_token_latency_ms_bucketed"
         const val INTERVAL_TOTAL_DURATION = "total_duration_ms_bucketed"
 
+        val LOCK_WAIT_BUCKETS = setOf(100.milliseconds, 500.milliseconds, 1.seconds, 3.seconds, 10.seconds, 30.seconds, 60.seconds)
+
+        const val KEY_LOCK_OUTCOME = "lock_outcome"
+        const val KEY_SERIALIZATION_ENABLED = "serialization_enabled"
         const val KEY_SUBSCRIPTION_STATUS = "subscription_status"
         const val KEY_BACKEND_ERROR_RESPONSE = "backend_error_response"
         const val KEY_PLAY_LOGIN_ERROR = "play_login_error"
+        const val KEY_SIGNED_OUT = "signed_out"
+        const val KEY_NETP_IS_ENABLED = "netp_is_enabled"
+        const val KEY_NETP_IS_RUNNING = "netp_is_running"
+        const val KEY_PROCESS_NAME = "process_name"
     }
 }
 
-private fun Exception.toErrorString(): String =
-    listOfNotNull(javaClass.simpleName, message).joinToString(": ")
+private fun Exception.toErrorString(): String = javaClass.simpleName

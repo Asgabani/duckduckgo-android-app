@@ -40,6 +40,9 @@ interface JobSchedulingDao {
     @Query("SELECT * FROM pir_optout_job_record ORDER BY attemptCount")
     fun getAllOptOutJobRecords(): List<OptOutJobRecordEntity>
 
+    @Query("SELECT * FROM pir_optout_job_record WHERE brokerName = :brokerName ORDER BY attemptCount")
+    fun getAllOptOutJobRecordsForBroker(brokerName: String): List<OptOutJobRecordEntity>
+
     @Query("SELECT * FROM pir_optout_job_record ORDER BY attemptCount")
     fun getAllOptOutJobRecordsFlow(): Flow<List<OptOutJobRecordEntity>>
 
@@ -114,5 +117,60 @@ interface JobSchedulingDao {
         deleteScanJobRecordsForProfiles(profileQueryIds)
         deleteOptOutJobRecordsForProfiles(profileQueryIds)
         deleteEmailConfirmationJobRecordsForProfiles(profileQueryIds)
+    }
+
+    @Query(
+        """
+    UPDATE pir_optout_job_record
+    SET reporting_sevenDayConfirmationReportSentDateMs = :newDate
+    WHERE extractedProfileId = :extractedProfileId
+    """,
+    )
+    fun updateSevenDayConfirmationReportSentDate(
+        extractedProfileId: Long,
+        newDate: Long,
+    )
+
+    @Query(
+        """
+    UPDATE pir_optout_job_record
+    SET reporting_fourteenDayConfirmationReportSentDateMs = :newDate
+    WHERE extractedProfileId = :extractedProfileId
+    """,
+    )
+    fun update14DayConfirmationReportSentDate(
+        extractedProfileId: Long,
+        newDate: Long,
+    )
+
+    @Query(
+        """
+    UPDATE pir_optout_job_record
+    SET reporting_twentyOneDayConfirmationReportSentDateMs = :newDate
+    WHERE extractedProfileId = :extractedProfileId
+    """,
+    )
+    fun update21DayConfirmationReportSentDate(
+        extractedProfileId: Long,
+        newDate: Long,
+    )
+
+    @Query(
+        """
+    UPDATE pir_optout_job_record
+    SET reporting_fortyTwoDayConfirmationReportSentDateMs = :newDate
+    WHERE extractedProfileId = :extractedProfileId
+    """,
+    )
+    fun update42DayConfirmationReportSentDate(
+        extractedProfileId: Long,
+        newDate: Long,
+    )
+
+    @Transaction
+    fun deleteAll() {
+        deleteAllScanJobRecords()
+        deleteAllOptOutJobRecords()
+        deleteAllEmailConfirmationJobRecords()
     }
 }

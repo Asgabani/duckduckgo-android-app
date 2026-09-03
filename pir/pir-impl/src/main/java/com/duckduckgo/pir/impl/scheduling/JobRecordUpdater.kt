@@ -19,7 +19,7 @@ package com.duckduckgo.pir.impl.scheduling
 import com.duckduckgo.common.utils.CurrentTimeProvider
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.AppScope
-import com.duckduckgo.pir.impl.models.AddressCityState
+import com.duckduckgo.pir.impl.common.toKey
 import com.duckduckgo.pir.impl.models.ExtractedProfile
 import com.duckduckgo.pir.impl.models.ProfileQuery
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord
@@ -110,6 +110,26 @@ interface JobRecordUpdater {
     )
 
     /**
+     * This method compares the [newExtractedProfiles] from the ones currently stored locally and
+     * associated to [brokerName] and [profileQueryId]. For every stored [ExtractedProfile] that IS
+     * part of the [newExtractedProfiles] and whose associated [OptOutJobRecord] is currently
+     * [OptOutJobStatus.REMOVED], we treat it as a reappearance: we revert the status back to
+     * [OptOutJobStatus.REQUESTED] and clear [OptOutJobRecord.optOutRemovedDateInMillis].
+     *
+     * This method should be called before we store [newExtractedProfiles] locally.
+     *
+     * @param newExtractedProfiles Newly [ExtractedProfile]s for the [brokerName] and [profileQueryId]
+     * @param brokerName The name of the broker associated with the scan job.
+     * @param profileQueryId The ID of the [ProfileQuery] related to the scan job.
+     * @return The list of [OptOutJobRecord]s that were reverted due to reappearance.
+     */
+    suspend fun markReappearedOptOutJobRecords(
+        newExtractedProfiles: List<ExtractedProfile>,
+        brokerName: String,
+        profileQueryId: Long,
+    ): List<OptOutJobRecord>
+
+    /**
      * Updates the [OptOutJobRecord] associated with a given [extractedProfileId].
      *
      * This method should be called when the opt-out attempt has been STARTED.
@@ -125,11 +145,13 @@ interface JobRecordUpdater {
      *
      * This method should be called when the opt-out attempt has been successfully completed.
      * It updates the corresponding all necessary attributes to mark the [OptOutJobRecord] as
-     * requested.
+     * requested. Also stamps [OptOutJobRecord.optOutFormSubmittedDateInMillis] on first call,
+     * leaving it untouched on subsequent retries so that it always reflects the first
+     * successful form submission.
      *
      * @param extractedProfileId The id stored in our database for the [ExtractedProfile]
      */
-    suspend fun updateOptOutRequested(extractedProfileId: Long)
+    suspend fun updateOptOutRequested(extractedProfileId: Long): OptOutJobRecord?
 
     /**
      * Updates the [OptOutJobRecord] associated with a given [extractedProfileId].
@@ -140,13 +162,15 @@ interface JobRecordUpdater {
      *
      * @param extractedProfileId The id stored in our database for the [ExtractedProfile]
      */
-    suspend fun updateOptOutError(extractedProfileId: Long)
+    suspend fun updateOptOutError(extractedProfileId: Long): OptOutJobRecord?
 
     /**
      * Updates the [OptOutJobRecord] associated with the given [extractedProfileId].
      *
      * This method should be called when the opt-out attempt requires email confirmation.
      * Ir updates the [OptOutJobStatus] accordingly and also creates a corresponding [EmailConfirmationJobRecord].
+     * Also stamps [OptOutJobRecord.optOutFormSubmittedDateInMillis] on first call (this represents
+     * the form-submission moment for email-confirming brokers).
      *
      * @param extractedProfileId The id stored in our database for the [ExtractedProfile]
      * @param profileQueryId  The ID of the [ProfileQuery] related to the scan job.
@@ -234,6 +258,15 @@ interface JobRecordUpdater {
      * that have an extracted profile associated to it to continue running scan jobs on them.
      */
     suspend fun removeScanJobRecordsWithNoMatchesForProfiles(profileQueryIds: List<Long>)
+
+    /**
+     * Marks the [ExtractedProfile], associated [OptOutJobRecord], and [EmailConfirmationJobRecord] as removed by user.
+     *
+     * This method should be called when the user removes an extracted profile from the dashboard.
+     *
+     * @param extractedProfileId The id of the [ExtractedProfile] to be marked as removed by user
+     */
+    suspend fun markRecordsAsRemovedByUser(extractedProfileId: Long)
 }
 
 @ContributesBinding(AppScope::class)
@@ -403,33 +436,90 @@ class RealJobRecordUpdater @Inject constructor(
         }
     }
 
-    override suspend fun updateOptOutRequested(extractedProfileId: Long) {
-        withContext(dispatcherProvider.io()) {
-            schedulingRepository.getValidOptOutJobRecord(extractedProfileId)?.also {
-                schedulingRepository.saveOptOutJobRecord(
-                    it
-                        .copy(
-                            status = OptOutJobStatus.REQUESTED,
-                            optOutRequestedDateInMillis = currentTimeProvider.currentTimeMillis(),
-                        ).also {
-                            logcat { "PIR-JOB-RECORD: Updating OptOutRecord for $extractedProfileId to $it" }
-                        },
-                )
+    override suspend fun markReappearedOptOutJobRecords(
+        newExtractedProfiles: List<ExtractedProfile>,
+        brokerName: String,
+        profileQueryId: Long,
+    ): List<OptOutJobRecord> {
+        return withContext(dispatcherProvider.io()) {
+            if (newExtractedProfiles.isEmpty()) {
+                return@withContext emptyList()
+            }
+
+            val storedExtractedProfiles =
+                repository.getExtractedProfiles(brokerName, profileQueryId)
+
+            if (storedExtractedProfiles.isEmpty()) {
+                return@withContext emptyList()
+            }
+
+            val newKeys =
+                newExtractedProfiles
+                    .asSequence()
+                    .map { it.toKey() }
+                    .toHashSet()
+
+            val reappearedExtractedProfiles =
+                storedExtractedProfiles
+                    .asSequence()
+                    .filter { it.toKey() in newKeys }
+                    .toList()
+
+            logcat { "PIR-JOB-RECORD: Reappeared Profiles $reappearedExtractedProfiles" }
+
+            reappearedExtractedProfiles.mapNotNull { extractedProfile ->
+                revertReappearedOptOutJobRecord(extractedProfile.dbId)
             }
         }
     }
 
-    override suspend fun updateOptOutError(extractedProfileId: Long) {
-        withContext(dispatcherProvider.io()) {
+    private suspend fun revertReappearedOptOutJobRecord(extractedProfileId: Long): OptOutJobRecord? {
+        return withContext(dispatcherProvider.io()) {
+            // Only scan-confirmed removals should be reverted. Deprecated records (including
+            // REMOVED_BY_USER, which is always deprecated) are excluded by getValidOptOutJobRecord,
+            // and the status check guards against reverting anything that isn't currently REMOVED.
+            val record = schedulingRepository.getValidOptOutJobRecord(extractedProfileId)
+                ?.takeIf { it.status == OptOutJobStatus.REMOVED }
+                ?: return@withContext null
+
+            val updatedRecord = record.copy(
+                status = OptOutJobStatus.REQUESTED,
+                optOutRemovedDateInMillis = 0L,
+            )
+            schedulingRepository.saveOptOutJobRecord(updatedRecord)
+            logcat { "PIR-JOB-RECORD: OptOutRecord for $extractedProfileId reappeared, reverting to $updatedRecord" }
+            updatedRecord
+        }
+    }
+
+    override suspend fun updateOptOutRequested(extractedProfileId: Long): OptOutJobRecord? {
+        return withContext(dispatcherProvider.io()) {
             schedulingRepository.getValidOptOutJobRecord(extractedProfileId)?.also {
-                schedulingRepository.saveOptOutJobRecord(
-                    it
-                        .copy(
-                            status = OptOutJobStatus.ERROR,
-                        ).also {
-                            logcat { "PIR-JOB-RECORD: Updating OptOutRecord for $extractedProfileId to $it" }
-                        },
+                val now = currentTimeProvider.currentTimeMillis()
+                val updatedRecord = it.copy(
+                    status = OptOutJobStatus.REQUESTED,
+                    optOutRequestedDateInMillis = now,
+                    optOutFormSubmittedDateInMillis = it.optOutFormSubmittedDateInMillis ?: now,
                 )
+                schedulingRepository.saveOptOutJobRecord(updatedRecord)
+
+                logcat { "PIR-JOB-RECORD: Updating OptOutRecord for $extractedProfileId to $it" }
+
+                return@withContext updatedRecord
+            }
+        }
+    }
+
+    override suspend fun updateOptOutError(extractedProfileId: Long): OptOutJobRecord? {
+        return withContext(dispatcherProvider.io()) {
+            schedulingRepository.getValidOptOutJobRecord(extractedProfileId)?.also {
+                val updatedRecord = it.copy(
+                    status = OptOutJobStatus.ERROR,
+                )
+                schedulingRepository.saveOptOutJobRecord(updatedRecord)
+                logcat { "PIR-JOB-RECORD: Updating OptOutRecord for $extractedProfileId to $it" }
+
+                return@withContext updatedRecord
             }
         }
     }
@@ -458,6 +548,7 @@ class RealJobRecordUpdater @Inject constructor(
                 it
                     .copy(
                         status = OptOutJobStatus.PENDING_EMAIL_CONFIRMATION,
+                        optOutFormSubmittedDateInMillis = it.optOutFormSubmittedDateInMillis ?: currentTimeProvider.currentTimeMillis(),
                     ).also {
                         logcat { "PIR-JOB-RECORD: Updating OptOutRecord for $extractedProfileId to $it" }
                     },
@@ -478,38 +569,28 @@ class RealJobRecordUpdater @Inject constructor(
         }
     }
 
-    private data class ExtractedProfileComparisonKey(
-        val profileQueryId: Long,
-        val brokerName: String,
-        val name: String,
-        val alternativeNames: List<String>,
-        val age: String,
-        val addresses: List<AddressCityState>,
-        val phoneNumbers: List<String>,
-        val relatives: List<String>,
-        val reportId: String,
-        val email: String,
-        val fullName: String,
-        val profileUrl: String,
-        val identifier: String,
-    )
+    override suspend fun markRecordsAsRemovedByUser(extractedProfileId: Long) {
+        withContext(dispatcherProvider.io()) {
+            repository.markExtractedProfileAsDeprecated(extractedProfileId)
 
-    private fun ExtractedProfile.toKey(): ExtractedProfileComparisonKey =
-        ExtractedProfileComparisonKey(
-            profileQueryId = profileQueryId,
-            brokerName = brokerName,
-            name = name,
-            alternativeNames = alternativeNames,
-            age = age,
-            addresses = addresses,
-            phoneNumbers = phoneNumbers,
-            relatives = relatives,
-            reportId = reportId,
-            email = email,
-            fullName = fullName,
-            profileUrl = profileUrl,
-            identifier = identifier,
-        )
+            // update the OptOutJobRecord for this ExtractedProfile (if it exists)
+            schedulingRepository.getValidOptOutJobRecord(extractedProfileId)?.run {
+                schedulingRepository.saveOptOutJobRecord(
+                    copy(
+                        status = OptOutJobStatus.REMOVED_BY_USER,
+                        deprecated = true,
+                    ).also {
+                        logcat { "PIR-JOB-RECORD: Updated OptOutJobRecord for $extractedProfileId to REMOVED_BY_USER: $it" }
+                    },
+                )
+            }
+
+            // delete the EmailConfirmationJobRecord for this ExtractedProfile (if it exists)
+            schedulingRepository.deleteEmailConfirmationJobRecord(extractedProfileId).also {
+                logcat { "PIR-JOB-RECORD: Delete EmailConfirmationJobRecord for $extractedProfileId" }
+            }
+        }
+    }
 
     override suspend fun markEmailConfirmationLinkFetchFailed(extractedProfileId: Long) {
         schedulingRepository.deleteEmailConfirmationJobRecord(extractedProfileId)

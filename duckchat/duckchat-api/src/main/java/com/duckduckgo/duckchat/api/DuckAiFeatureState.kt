@@ -30,11 +30,6 @@ interface DuckAiFeatureState {
     val showInputScreen: StateFlow<Boolean>
 
     /**
-     * Indicates whether opening a New Tab should automatically open the Input Screen. This will only be enabled if [showInputScreen] is also enabled.
-     */
-    val showInputScreenAutomaticallyOnNewTab: StateFlow<Boolean>
-
-    /**
      * Indicates whether the Duck AI shortcut should be shown in the popup menus in the main browser tabs as well as on the tab switcher screen.
      */
     val showPopupMenuShortcut: StateFlow<Boolean>
@@ -52,7 +47,7 @@ interface DuckAiFeatureState {
     /**
      * Indicates whether the new address bar option choice screen feature is enabled.
      */
-    val showNewAddressBarOptionChoiceScreen: StateFlow<Boolean>
+    val showAIChatAddressBarOptionChoiceScreen: StateFlow<Boolean>
 
     /**
      * Indicates whether the Setting for allowing Duck.ai chats to be deleted with the Fire Button is enabled
@@ -60,12 +55,29 @@ interface DuckAiFeatureState {
     val showClearDuckAIChatHistory: StateFlow<Boolean>
 
     /**
-     * Indicates whether the Input Screen should be shown when user open the app from system widgets
-     */
-    val showInputScreenOnSystemSearchLaunch: StateFlow<Boolean>
-
-    /**
      * Indicates whether the Input Mode toggle should be shown in the voice search screen.
      */
     val showVoiceSearchToggle: StateFlow<Boolean>
+
+    /**
+     * Indicates whether the voice chat entry point (e.g. the voice chat button on the chat tab of the input screen)
+     * should be shown.
+     */
+    val showVoiceChatEntry: StateFlow<Boolean>
+
+    /**
+     * Indicates whether Duck.ai should be open in Contextual mode
+     */
+    val showContextualMode: StateFlow<Boolean>
+
+    /**
+     * Indicates whether Duck.ai should be used as digital assistant
+     */
+    val allowDuckAiAsDigitalAssistant: StateFlow<Boolean>
+
+    /**
+     * True when the native input field is the active input surface. Mutually exclusive with
+     * [showInputScreen] (which is computed with `&& !isNativeInputFieldEnabled`).
+     */
+    val nativeInputFieldEnabled: StateFlow<Boolean>
 }

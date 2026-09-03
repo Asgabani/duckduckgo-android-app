@@ -17,13 +17,15 @@
 package com.duckduckgo.app.browser.omnibar
 
 import androidx.lifecycle.LifecycleOwner
+import com.duckduckgo.app.browser.api.OmnibarRepository
 import com.duckduckgo.app.di.AppCoroutineScope
 import com.duckduckgo.app.lifecycle.MainProcessLifecycleObserver
-import com.duckduckgo.app.pixels.remoteconfig.AndroidBrowserConfigFeature
 import com.duckduckgo.app.settings.db.SettingsDataStore
-import com.duckduckgo.browser.ui.omnibar.OmnibarType
+import com.duckduckgo.browser.feature.toggles.AndroidBrowserConfigFeature
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.AppScope
+import com.duckduckgo.privacy.config.api.PrivacyConfigCallbackPlugin
+import com.squareup.anvil.annotations.ContributesBinding
 import com.squareup.anvil.annotations.ContributesMultibinding
 import dagger.SingleInstanceIn
 import kotlinx.coroutines.CoroutineScope
@@ -34,32 +36,34 @@ import javax.inject.Inject
     scope = AppScope::class,
     boundType = MainProcessLifecycleObserver::class,
 )
+@ContributesMultibinding(
+    scope = AppScope::class,
+    boundType = PrivacyConfigCallbackPlugin::class,
+)
 @SingleInstanceIn(AppScope::class)
+@ContributesBinding(scope = AppScope::class, boundType = OmnibarRepository::class)
 open class OmnibarFeatureRepository @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val browserFeatures: AndroidBrowserConfigFeature,
     private val dispatcherProvider: DispatcherProvider,
     @AppCoroutineScope private val coroutineScope: CoroutineScope,
-) : MainProcessLifecycleObserver {
+) : OmnibarRepository, MainProcessLifecycleObserver, PrivacyConfigCallbackPlugin {
     private var isSplitOmnibarFlagEnabled: Boolean = false
+    private var isNewCustomTabFlagEnabled: Boolean = false
 
-    var isUnifiedOmnibarFlagEnabled: Boolean = false
-        private set
+    override val omnibarType: OmnibarType
+        get() = settingsDataStore.omnibarType
 
-    val isSplitOmnibarEnabled: Boolean
-        get() = isSplitOmnibarAvailable && settingsDataStore.omnibarType == OmnibarType.SPLIT
+    override val isSplitOmnibarAvailable: Boolean
+        get() = isSplitOmnibarFlagEnabled
 
-    val isSplitOmnibarAvailable: Boolean
-        get() = isSplitOmnibarFlagEnabled && isUnifiedOmnibarFlagEnabled
+    override val isNewCustomTabEnabled: Boolean
+        get() = isNewCustomTabFlagEnabled
 
     override fun onStart(owner: LifecycleOwner) {
-        updateFeatureFlags()
-    }
-
-    fun updateFeatureFlags() {
         coroutineScope.launch(dispatcherProvider.io()) {
-            isUnifiedOmnibarFlagEnabled = browserFeatures.useUnifiedOmnibarLayout().isEnabled()
             isSplitOmnibarFlagEnabled = browserFeatures.splitOmnibar().isEnabled()
+            isNewCustomTabFlagEnabled = browserFeatures.newCustomTab().isEnabled()
 
             resetOmnibarTypeIfNecessary()
         }
@@ -73,6 +77,15 @@ open class OmnibarFeatureRepository @Inject constructor(
             // Restore user's choice if the feature is re-enabled
             settingsDataStore.omnibarType = OmnibarType.SPLIT
             settingsDataStore.isSplitOmnibarSelected = false
+        }
+    }
+
+    override fun onPrivacyConfigDownloaded() {
+        coroutineScope.launch(dispatcherProvider.io()) {
+            if (settingsDataStore.omnibarType != OmnibarType.SPLIT) {
+                isSplitOmnibarFlagEnabled = browserFeatures.splitOmnibar().isEnabled()
+            }
+            isNewCustomTabFlagEnabled = browserFeatures.newCustomTab().isEnabled()
         }
     }
 }

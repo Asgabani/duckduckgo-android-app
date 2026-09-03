@@ -114,7 +114,7 @@
             android:id="@+id/browserMenu"
             android:layout_width="@dimen/toolbarIcon"
             android:layout_height="@dimen/toolbarIcon"
-            android:background="@drawable/selectable_item_experimental_background"
+            android:background="@drawable/selectable_item_rounded_corner_background"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toEndOf="@id/tabsMenu"
@@ -136,7 +136,7 @@
                 android:layout_height="7dp"
                 android:layout_gravity="end"
                 android:layout_margin="@dimen/keyline_2"
-                android:background="@drawable/ic_circle_7_accent_blue"
+                android:background="@drawable/ic_dot_indicator_7"
                 android:visibility="gone" />
 
         </FrameLayout>
@@ -145,7 +145,7 @@
             android:id="@+id/fireIconMenu"
             android:layout_width="@dimen/toolbarIcon"
             android:layout_height="@dimen/toolbarIcon"
-            android:background="@drawable/selectable_item_experimental_background"
+            android:background="@drawable/selectable_item_rounded_corner_background"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@id/tabsMenu"
             app:layout_constraintStart_toStartOf="parent"

@@ -18,25 +18,32 @@ package com.duckduckgo.pir.impl.common.actions
 
 import com.duckduckgo.common.test.CoroutineTestRule
 import com.duckduckgo.common.utils.CurrentTimeProvider
+import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep
 import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.EmailConfirmationStep
 import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.OptOutStep
 import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.ScanStep
+import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStepActions.OptOutStepActions
+import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStepActions.ScanStepActions
 import com.duckduckgo.pir.impl.common.PirJob.RunType
 import com.duckduckgo.pir.impl.common.PirRunStateHandler
 import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerOptOutActionSucceeded
 import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerScanActionSucceeded
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerStepInvalidEvent
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.Event.ExecuteBrokerStepAction
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.Event.JsActionSuccess
+import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.PirStageStatus
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.SideEffect.EvaluateJs
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.SideEffect.GetCaptchaSolution
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.SideEffect.LoadUrl
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.State
+import com.duckduckgo.pir.impl.models.Broker
 import com.duckduckgo.pir.impl.models.ExtractedProfile
 import com.duckduckgo.pir.impl.models.ProfileQuery
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord.EmailData
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord.JobAttemptData
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord.LinkFetchData
+import com.duckduckgo.pir.impl.pixels.PirStage
 import com.duckduckgo.pir.impl.scripts.models.BrokerAction
 import com.duckduckgo.pir.impl.scripts.models.PirScriptRequestData.UserProfile
 import com.duckduckgo.pir.impl.scripts.models.PirSuccessResponse.ClickResponse
@@ -57,6 +64,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoMoreInteractions
 import org.mockito.kotlin.whenever
 
 class JsActionSuccessEventHandlerTest {
@@ -72,7 +80,7 @@ class JsActionSuccessEventHandlerTest {
     private val testBrokerName = "test-broker"
     private val testProfileQueryId = 123L
     private val testCurrentTimeInMillis = 2000L
-    private val testCurrentActionIndex = 1
+    private val testCurrentActionIndex = 0
     private val testActionRetryCount = 3
 
     private val testProfileQuery =
@@ -123,6 +131,25 @@ class JsActionSuccessEventHandlerTest {
         url = "https://example.com",
     )
 
+    private val testBroker1 = Broker(
+        name = testBrokerName,
+        fileName = "test-broker-1.json",
+        url = "https://test-broker-1.com",
+        version = "1.0",
+        parent = null,
+        addedDatetime = testCurrentTimeInMillis,
+        removedAt = 0L,
+    )
+
+    private val testScanStep = ScanStep(
+        broker = testBroker1,
+        step = ScanStepActions(
+            stepType = "scan",
+            actions = listOf(testAction),
+            scanType = "initial",
+        ),
+    )
+
     @Before
     fun setUp() {
         testee =
@@ -147,21 +174,17 @@ class JsActionSuccessEventHandlerTest {
                 actionType = "navigate",
                 response = NavigateResponse.ResponseData(url = "https://example.com/result"),
             )
-        val scanStep =
-            ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(testAction),
-                scanType = "initial",
-            )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = setupBrokerStep(navigateResponse.actionID),
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
                 actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0L,
+                ),
             )
         val event = JsActionSuccess(pirSuccessResponse = navigateResponse)
 
@@ -178,9 +201,10 @@ class JsActionSuccessEventHandlerTest {
 
         val capturedState = argumentCaptor<BrokerScanActionSucceeded>()
         verify(mockPirRunStateHandler).handleState(capturedState.capture())
-        assertEquals(testBrokerName, capturedState.firstValue.brokerName)
+        assertEquals(testBroker1, capturedState.firstValue.broker)
         assertEquals(testProfileQueryId, capturedState.firstValue.profileQueryId)
         assertEquals(navigateResponse, capturedState.firstValue.pirSuccessResponse)
+        verifyNoMoreInteractions(mockPirRunStateHandler)
     }
 
     @Test
@@ -190,21 +214,17 @@ class JsActionSuccessEventHandlerTest {
                 actionID = "fillform-1",
                 actionType = "fillForm",
             )
-        val scanStep =
-            ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(testAction),
-                scanType = "initial",
-            )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = setupBrokerStep(fillFormResponse.actionID),
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
                 actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val event = JsActionSuccess(pirSuccessResponse = fillFormResponse)
 
@@ -223,6 +243,7 @@ class JsActionSuccessEventHandlerTest {
         assertNull(result.sideEffect)
 
         verify(mockPirRunStateHandler).handleState(any<BrokerScanActionSucceeded>())
+        verifyNoMoreInteractions(mockPirRunStateHandler)
     }
 
     @Test
@@ -232,21 +253,17 @@ class JsActionSuccessEventHandlerTest {
                 actionID = "click-1",
                 actionType = "click",
             )
-        val scanStep =
-            ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(testAction),
-                scanType = "initial",
-            )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = setupBrokerStep(clickResponse.actionID),
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
                 actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val event = JsActionSuccess(pirSuccessResponse = clickResponse)
 
@@ -272,21 +289,17 @@ class JsActionSuccessEventHandlerTest {
                 actionID = "expectation-1",
                 actionType = "expectation",
             )
-        val scanStep =
-            ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(testAction),
-                scanType = "initial",
-            )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = setupBrokerStep(expectationResponse.actionID),
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
                 actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val event = JsActionSuccess(pirSuccessResponse = expectationResponse)
 
@@ -313,21 +326,17 @@ class JsActionSuccessEventHandlerTest {
                 actionType = "extract",
                 response = emptyList(),
             )
-        val scanStep =
-            ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(testAction),
-                scanType = "initial",
-            )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = setupBrokerStep(extractedResponse.actionID),
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
                 actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val event = JsActionSuccess(pirSuccessResponse = extractedResponse)
 
@@ -360,27 +369,29 @@ class JsActionSuccessEventHandlerTest {
                         type = "recaptcha",
                     ),
                 )
-            val scanStep =
-                ScanStep(
-                    brokerName = testBrokerName,
-                    stepType = "scan",
-                    actions = listOf(testAction),
-                    scanType = "initial",
-                )
             val state =
                 State(
                     runType = RunType.MANUAL,
-                    brokerStepsToExecute = listOf(scanStep),
+                    brokerStep = setupBrokerStep(captchaResponse.actionID),
                     profileQuery = testProfileQuery,
-                    currentBrokerStepIndex = 0,
                     currentActionIndex = testCurrentActionIndex,
                     actionRetryCount = testActionRetryCount,
+                    stageStatus = PirStageStatus(
+                        currentStage = PirStage.CAPTCHA_PARSE,
+                        stageStartMs = testCurrentTimeInMillis,
+                    ),
                 )
             val event = JsActionSuccess(pirSuccessResponse = captchaResponse)
 
             val result = testee.invoke(state, event)
 
-            val expectedState = state.copy(actionRetryCount = 0)
+            val expectedState = state.copy(
+                actionRetryCount = 0,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.CAPTCHA_SEND,
+                    stageStartMs = testCurrentTimeInMillis,
+                ),
+            )
             assertEquals(expectedState, result.nextState)
             assertEquals(
                 GetCaptchaSolution(
@@ -405,21 +416,17 @@ class JsActionSuccessEventHandlerTest {
                         callback = SolveCaptchaResponse.CallbackData(eval = "callback-script"),
                     ),
                 )
-            val scanStep =
-                ScanStep(
-                    brokerName = testBrokerName,
-                    stepType = "scan",
-                    actions = listOf(testAction),
-                    scanType = "initial",
-                )
             val state =
                 State(
                     runType = RunType.MANUAL,
-                    brokerStepsToExecute = listOf(scanStep),
+                    brokerStep = setupBrokerStep(solveCaptchaResponse.actionID),
                     profileQuery = testProfileQuery,
-                    currentBrokerStepIndex = 0,
                     currentActionIndex = testCurrentActionIndex,
                     actionRetryCount = testActionRetryCount,
+                    stageStatus = PirStageStatus(
+                        currentStage = PirStage.OTHER,
+                        stageStartMs = 0,
+                    ),
                 )
             val event = JsActionSuccess(pirSuccessResponse = solveCaptchaResponse)
 
@@ -455,21 +462,17 @@ class JsActionSuccessEventHandlerTest {
                     actionType = "condition",
                     response = ConditionResponse.ResponseData(actions = conditionActions),
                 )
-            val scanStep =
-                ScanStep(
-                    brokerName = testBrokerName,
-                    stepType = "scan",
-                    actions = listOf(testAction),
-                    scanType = "initial",
-                )
             val state =
                 State(
                     runType = RunType.MANUAL,
-                    brokerStepsToExecute = listOf(scanStep),
+                    brokerStep = setupBrokerStep(conditionResponse.actionID),
                     profileQuery = testProfileQuery,
-                    currentBrokerStepIndex = 0,
                     currentActionIndex = testCurrentActionIndex,
                     actionRetryCount = testActionRetryCount,
+                    stageStatus = PirStageStatus(
+                        currentStage = PirStage.OTHER,
+                        stageStartMs = 0,
+                    ),
                 )
             val event = JsActionSuccess(pirSuccessResponse = conditionResponse)
 
@@ -492,21 +495,17 @@ class JsActionSuccessEventHandlerTest {
                 actionType = "condition",
                 response = ConditionResponse.ResponseData(actions = emptyList()),
             )
-        val scanStep =
-            ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(testAction),
-                scanType = "initial",
-            )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = setupBrokerStep(conditionResponse.actionID),
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
                 actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val event = JsActionSuccess(pirSuccessResponse = conditionResponse)
 
@@ -534,20 +533,25 @@ class JsActionSuccessEventHandlerTest {
             )
         val optOutStep =
             OptOutStep(
-                brokerName = testBrokerName,
-                stepType = "optout",
-                actions = listOf(testAction),
-                optOutType = "form",
+                broker = testBroker1,
+                step = OptOutStepActions(
+                    stepType = "optout",
+                    actions = listOf(testAction.copy(navigateResponse.actionID)),
+                    optOutType = "form",
+                ),
                 profileToOptOut = testExtractedProfile,
             )
         val state =
             State(
                 runType = RunType.OPTOUT,
-                brokerStepsToExecute = listOf(optOutStep),
+                brokerStep = optOutStep,
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
                 actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val event = JsActionSuccess(pirSuccessResponse = navigateResponse)
 
@@ -555,7 +559,7 @@ class JsActionSuccessEventHandlerTest {
 
         val capturedState = argumentCaptor<BrokerOptOutActionSucceeded>()
         verify(mockPirRunStateHandler).handleState(capturedState.capture())
-        assertEquals(testBrokerName, capturedState.firstValue.brokerName)
+        assertEquals(testBroker1, capturedState.firstValue.broker)
         assertEquals(testExtractedProfile, capturedState.firstValue.extractedProfile)
         assertEquals(testCurrentTimeInMillis, capturedState.firstValue.completionTimeInMillis)
         assertEquals("navigate", capturedState.firstValue.actionType)
@@ -574,20 +578,26 @@ class JsActionSuccessEventHandlerTest {
             )
         val emailConfirmationStep =
             EmailConfirmationStep(
-                brokerName = testBrokerName,
-                stepType = "emailConfirmation",
-                actions = listOf(testAction),
+                broker = testBroker1,
+                step = OptOutStepActions(
+                    stepType = "optout",
+                    actions = listOf(testAction.copy(navigateResponse.actionID)),
+                    optOutType = "form",
+                ),
                 emailConfirmationJob = testEmailConfirmationJob,
                 profileToOptOut = testExtractedProfile,
             )
         val state =
             State(
                 runType = RunType.EMAIL_CONFIRMATION,
-                brokerStepsToExecute = listOf(emailConfirmationStep),
+                brokerStep = emailConfirmationStep,
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
                 actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val event = JsActionSuccess(pirSuccessResponse = navigateResponse)
 
@@ -595,12 +605,95 @@ class JsActionSuccessEventHandlerTest {
 
         val capturedState = argumentCaptor<BrokerOptOutActionSucceeded>()
         verify(mockPirRunStateHandler).handleState(capturedState.capture())
-        assertEquals(testBrokerName, capturedState.firstValue.brokerName)
+        assertEquals(testBroker1, capturedState.firstValue.broker)
         assertEquals(testExtractedProfile, capturedState.firstValue.extractedProfile)
         assertEquals(testCurrentTimeInMillis, capturedState.firstValue.completionTimeInMillis)
         assertEquals("navigate", capturedState.firstValue.actionType)
         assertEquals(navigateResponse, capturedState.firstValue.result)
 
         assertEquals(LoadUrl(url = "https://example.com/result"), result.sideEffect)
+        verifyNoMoreInteractions(mockPirRunStateHandler)
+    }
+
+    @Test
+    fun whenActionIndexExceedsActionsSizeThenEventIsInvalidAndReturnsUnchangedState() = runTest {
+        val navigateResponse =
+            NavigateResponse(
+                actionID = "navigate-1",
+                actionType = "navigate",
+                response = NavigateResponse.ResponseData(url = "https://example.com/result"),
+            )
+        val state =
+            State(
+                runType = RunType.MANUAL,
+                brokerStep = testScanStep,
+                profileQuery = testProfileQuery,
+                currentActionIndex = 10, // Exceeds actions size (1)
+                actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0L,
+                ),
+            )
+        val event = JsActionSuccess(pirSuccessResponse = navigateResponse)
+
+        val result = testee.invoke(state, event)
+
+        assertEquals(state, result.nextState)
+        assertNull(result.nextEvent)
+        assertNull(result.sideEffect)
+        verify(mockPirRunStateHandler).handleState(
+            BrokerStepInvalidEvent(
+                broker = testScanStep.broker,
+                runType = RunType.MANUAL,
+            ),
+        )
+    }
+
+    @Test
+    fun whenActionIdDoesNotMatchCurrentActionThenEventIsInvalidAndReturnsUnchangedState() = runTest {
+        val navigateResponse =
+            NavigateResponse(
+                actionID = "different-action-id", // Does not match testAction.id ("action-1")
+                actionType = "navigate",
+                response = NavigateResponse.ResponseData(url = "https://example.com/result"),
+            )
+        val state =
+            State(
+                runType = RunType.MANUAL,
+                brokerStep = testScanStep, // testScanStep uses testAction with id "action-1"
+                profileQuery = testProfileQuery,
+                currentActionIndex = 0,
+                actionRetryCount = testActionRetryCount,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0L,
+                ),
+            )
+        val event = JsActionSuccess(pirSuccessResponse = navigateResponse)
+
+        val result = testee.invoke(state, event)
+
+        assertEquals(state, result.nextState)
+        assertNull(result.nextEvent)
+        assertNull(result.sideEffect)
+        verify(mockPirRunStateHandler).handleState(
+            BrokerStepInvalidEvent(
+                broker = testScanStep.broker,
+                runType = RunType.MANUAL,
+            ),
+        )
+    }
+
+    private fun setupBrokerStep(actionId: String): BrokerStep {
+        return testScanStep.copy(
+            step = testScanStep.step.copy(
+                actions = listOf(
+                    testAction.copy(
+                        id = actionId,
+                    ),
+                ),
+            ),
+        )
     }
 }

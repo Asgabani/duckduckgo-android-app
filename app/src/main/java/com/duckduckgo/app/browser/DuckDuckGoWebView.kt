@@ -23,6 +23,7 @@ import android.print.PrintDocumentAdapter
 import android.util.AttributeSet
 import android.util.SparseArray
 import android.view.MotionEvent
+import android.view.WindowInsets
 import android.view.autofill.AutofillValue
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -32,15 +33,18 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.graphics.Insets
 import androidx.core.view.NestedScrollingChild3
 import androidx.core.view.NestedScrollingChildHelper
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewCompat.WebMessageListener
 import com.duckduckgo.anvil.annotations.InjectWith
 import com.duckduckgo.app.browser.navigation.safeCopyBackForwardList
+import com.duckduckgo.app.browser.uilock.BrowserUiLockFeature
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.ViewScope
 import dagger.android.support.AndroidSupportInjection
@@ -78,10 +82,14 @@ class DuckDuckGoWebView :
     private val helper = CoordinatorLayoutHelper()
 
     private var isDestroyed: Boolean = false
-    var isSafeWebViewEnabled: Boolean = false
+    private var isSafeWebViewEnabled: Boolean = true
+    private var stripImeInsetsEnabled: Boolean = false
 
     @Inject
     lateinit var dispatcherProvider: DispatcherProvider
+
+    @Inject
+    lateinit var browserUiLockFeature: BrowserUiLockFeature
 
     constructor(context: Context) : this(context, null)
     constructor(
@@ -95,6 +103,24 @@ class DuckDuckGoWebView :
         AndroidSupportInjection.inject(this)
         super.onAttachedToWindow()
         helper.onViewAttached(this)
+    }
+
+    override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        val adjustedInsets = if (stripImeInsetsEnabled) stripImeInsets(insets) else insets
+        return super.onApplyWindowInsets(adjustedInsets)
+    }
+
+    // Zero any IME inset passed to the WebView to avoid double-padding if the IME padding is handled by the surrounding layout.
+    // Reference https://developer.android.com/develop/ui/views/layout/webapps/understand-window-insets
+    private fun stripImeInsets(insets: WindowInsets): WindowInsets {
+        val windowInsetsCompat = WindowInsetsCompat.toWindowInsetsCompat(insets, this)
+
+        if (windowInsetsCompat.getInsets(WindowInsetsCompat.Type.ime()) == Insets.NONE) return insets
+
+        return WindowInsetsCompat.Builder(windowInsetsCompat)
+            .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
+            .build()
+            .toWindowInsets() ?: insets
     }
 
     override fun destroy() {
@@ -244,6 +270,15 @@ class DuckDuckGoWebView :
 
     fun setBottomMatchingBehaviourEnabled(value: Boolean) {
         helper.setBottomMatchingBehaviourEnabled(value)
+    }
+
+    /**
+     * Enable when the surrounding layout already resizes for the keyboard, so IME insets are
+     * zeroed out before reaching the WebView and it does not additionally shrink its visual
+     * viewport for them.
+     */
+    fun setStripImeInsetsEnabled(value: Boolean) {
+        stripImeInsetsEnabled = value
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
@@ -419,7 +454,6 @@ class DuckDuckGoWebView :
         }
 
         enableSwipeRefresh(canSwipeToRefresh && clampedY && scrollY == 0 && (lastDeltaY <= 0 || nestedOffsetY == 0))
-        post(helper::computeBottomMarginIfNeeded)
         super.onOverScrolled(scrollX, scrollY, clampedX, clampedY)
     }
 
@@ -443,10 +477,10 @@ class DuckDuckGoWebView :
         enableSwipeRefreshCallback?.invoke(enable && contentAllowsSwipeToRefresh)
     }
 
-    private fun setContentAllowsSwipeToRefresh(allowed: Boolean) {
+    internal fun setContentAllowsSwipeToRefresh(allowed: Boolean) {
         contentAllowsSwipeToRefresh = allowed
-        if (!allowed) {
-            enableSwipeRefresh(false)
+        if (!allowed || (::browserUiLockFeature.isInitialized && browserUiLockFeature.self().isEnabled())) {
+            enableSwipeRefresh(allowed)
         }
     }
 

@@ -42,6 +42,7 @@ import com.duckduckgo.subscriptions.api.SubscriptionStatus.INACTIVE
 import com.duckduckgo.subscriptions.api.SubscriptionStatus.NOT_AUTO_RENEWABLE
 import com.duckduckgo.subscriptions.api.SubscriptionStatus.WAITING
 import com.duckduckgo.subscriptions.impl.R
+import com.duckduckgo.subscriptions.impl.SubscriptionsConstants
 import com.duckduckgo.subscriptions.impl.databinding.ViewSettingsBinding
 import com.duckduckgo.subscriptions.impl.internal.SubscriptionsUrlProvider
 import com.duckduckgo.subscriptions.impl.settings.views.ProSettingViewModel.Command
@@ -187,9 +188,10 @@ class ProSettingView @JvmOverloads constructor(
         }
     }
 
-    private fun getActionButtonText(viewState: ViewState) = when (viewState.freeTrialEligible) {
-        true -> R.string.subscriptionSettingTryFreeTrial
-        false -> R.string.subscriptionSettingGet
+    private fun getActionButtonText(viewState: ViewState) = when {
+        viewState.blackFridayOfferAvailable -> R.string.subscriptionSettingBlackFridayOffer
+        viewState.freeTrialEligible -> R.string.subscriptionSettingTryFreeTrial
+        else -> R.string.subscriptionSettingGet
     }
 
     private fun getSubscriptionSecondaryText(viewState: ViewState) = if (viewState.duckAiPlusAvailable) {
@@ -216,7 +218,7 @@ class ProSettingView @JvmOverloads constructor(
                     context,
                     SubscriptionsWebViewActivityWithParams(
                         url = subscriptionsUrlProvider.buyUrl,
-                        origin = "funnel_appsettings_android",
+                        origin = SubscriptionsConstants.ORIGIN_APP_SETTINGS,
                     ),
                 )
             }

@@ -17,19 +17,26 @@
 package com.duckduckgo.pir.impl.common.actions
 
 import com.duckduckgo.common.test.CoroutineTestRule
+import com.duckduckgo.common.utils.CurrentTimeProvider
 import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.EmailConfirmationStep
 import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.OptOutStep
 import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.ScanStep
+import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStepActions.OptOutStepActions
+import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStepActions.ScanStepActions
 import com.duckduckgo.pir.impl.common.PirJob.RunType
+import com.duckduckgo.pir.impl.common.PirRunStateHandler
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.Event.ConditionExpectationSucceeded
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.Event.ExecuteBrokerStepAction
+import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.PirStageStatus
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.State
+import com.duckduckgo.pir.impl.models.Broker
 import com.duckduckgo.pir.impl.models.ExtractedProfile
 import com.duckduckgo.pir.impl.models.ProfileQuery
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord.EmailData
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord.JobAttemptData
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord.LinkFetchData
+import com.duckduckgo.pir.impl.pixels.PirStage
 import com.duckduckgo.pir.impl.scripts.models.BrokerAction
 import com.duckduckgo.pir.impl.scripts.models.PirScriptRequestData.UserProfile
 import kotlinx.coroutines.test.runTest
@@ -38,11 +45,14 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.mockito.kotlin.mock
 
 class ConditionExpectationSucceededEventHandlerTest {
     @get:Rule
     val coroutineRule = CoroutineTestRule()
 
+    private val mockCurrentTimeProvider: CurrentTimeProvider = mock()
+    private val mockPirRunStateHandler: PirRunStateHandler = mock()
     private lateinit var testee: ConditionExpectationSucceededEventHandler
 
     // Test data
@@ -127,9 +137,22 @@ class ConditionExpectationSucceededEventHandlerTest {
             selector = null,
         )
 
+    private val testBroker1 = Broker(
+        name = "test-broker-1",
+        fileName = "test-broker-1.json",
+        url = "https://test-broker-1.com",
+        version = "1.0",
+        parent = null,
+        addedDatetime = 124354,
+        removedAt = 0L,
+    )
+
     @Before
     fun setUp() {
-        testee = ConditionExpectationSucceededEventHandler()
+        testee = ConditionExpectationSucceededEventHandler(
+            mockPirRunStateHandler,
+            mockCurrentTimeProvider,
+        )
     }
 
     @Test
@@ -141,18 +164,23 @@ class ConditionExpectationSucceededEventHandlerTest {
     fun whenConditionActionsWithScanStepThenInsertsActionsAndReturnsNextEvent() = runTest {
         val scanStep =
             ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(existingAction1, existingAction2, existingAction3),
-                scanType = "initial",
+                broker = testBroker1,
+                step = ScanStepActions(
+                    stepType = "scan",
+                    actions = listOf(existingAction1, existingAction2, existingAction3),
+                    scanType = "initial",
+                ),
             )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = scanStep,
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val conditionActions = listOf(conditionAction1, conditionAction2)
         val event = ConditionExpectationSucceeded(conditionActions = conditionActions)
@@ -160,7 +188,7 @@ class ConditionExpectationSucceededEventHandlerTest {
         val result = testee.invoke(state, event)
 
         // Verify actions are inserted at currentActionIndex + 1 (after action-2)
-        val updatedScanStep = result.nextState.brokerStepsToExecute[0] as ScanStep
+        val updatedScanStep = result.nextState.brokerStep as ScanStep
         val expectedActions =
             listOf(
                 existingAction1, // action-1
@@ -169,7 +197,7 @@ class ConditionExpectationSucceededEventHandlerTest {
                 conditionAction2, // inserted action
                 existingAction3, // action-3
             )
-        assertEquals(expectedActions, updatedScanStep.actions)
+        assertEquals(expectedActions, updatedScanStep.step.actions)
 
         // Verify state is updated correctly
         assertEquals(testCurrentActionIndex + 1, result.nextState.currentActionIndex)
@@ -184,33 +212,38 @@ class ConditionExpectationSucceededEventHandlerTest {
     fun whenConditionActionsWithOptOutStepThenInsertsActionsAndReturnsNextEvent() = runTest {
         val optOutStep =
             OptOutStep(
-                brokerName = testBrokerName,
-                stepType = "optout",
-                actions = listOf(existingAction1, existingAction2),
-                optOutType = "form",
+                broker = testBroker1,
+                step = OptOutStepActions(
+                    stepType = "optout",
+                    actions = listOf(existingAction1, existingAction2),
+                    optOutType = "form",
+                ),
                 profileToOptOut = testExtractedProfile,
             )
         val state =
             State(
                 runType = RunType.OPTOUT,
-                brokerStepsToExecute = listOf(optOutStep),
+                brokerStep = optOutStep,
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val conditionActions = listOf(conditionAction1)
         val event = ConditionExpectationSucceeded(conditionActions = conditionActions)
 
         val result = testee.invoke(state, event)
 
-        val updatedOptOutStep = result.nextState.brokerStepsToExecute[0] as OptOutStep
+        val updatedOptOutStep = result.nextState.brokerStep as OptOutStep
         val expectedActions =
             listOf(
                 existingAction1,
                 existingAction2,
                 conditionAction1,
             )
-        assertEquals(expectedActions, updatedOptOutStep.actions)
+        assertEquals(expectedActions, updatedOptOutStep.step.actions)
 
         assertEquals(testCurrentActionIndex + 1, result.nextState.currentActionIndex)
         assertEquals(
@@ -224,19 +257,25 @@ class ConditionExpectationSucceededEventHandlerTest {
         runTest {
             val emailConfirmationStep =
                 EmailConfirmationStep(
-                    brokerName = testBrokerName,
-                    stepType = "emailConfirmation",
-                    actions = listOf(existingAction1, existingAction2),
+                    broker = testBroker1,
+                    step = OptOutStepActions(
+                        stepType = "optout",
+                        actions = listOf(existingAction1, existingAction2),
+                        optOutType = "form",
+                    ),
                     emailConfirmationJob = testEmailConfirmationJob,
                     profileToOptOut = testExtractedProfile,
                 )
             val state =
                 State(
                     runType = RunType.EMAIL_CONFIRMATION,
-                    brokerStepsToExecute = listOf(emailConfirmationStep),
+                    brokerStep = emailConfirmationStep,
                     profileQuery = testProfileQuery,
-                    currentBrokerStepIndex = 0,
                     currentActionIndex = testCurrentActionIndex,
+                    stageStatus = PirStageStatus(
+                        currentStage = PirStage.OTHER,
+                        stageStartMs = 0,
+                    ),
                 )
             val conditionActions = listOf(conditionAction1)
             val event = ConditionExpectationSucceeded(conditionActions = conditionActions)
@@ -244,14 +283,14 @@ class ConditionExpectationSucceededEventHandlerTest {
             val result = testee.invoke(state, event)
 
             val updatedEmailConfirmationStep =
-                result.nextState.brokerStepsToExecute[0] as EmailConfirmationStep
+                result.nextState.brokerStep as EmailConfirmationStep
             val expectedActions =
                 listOf(
                     existingAction1,
                     existingAction2,
                     conditionAction1,
                 )
-            assertEquals(expectedActions, updatedEmailConfirmationStep.actions)
+            assertEquals(expectedActions, updatedEmailConfirmationStep.step.actions)
 
             assertEquals(testCurrentActionIndex + 1, result.nextState.currentActionIndex)
             assertEquals(
@@ -264,32 +303,37 @@ class ConditionExpectationSucceededEventHandlerTest {
     fun whenConditionActionsInsertedAtBeginningThenActionsAreInCorrectOrder() = runTest {
         val scanStep =
             ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(existingAction1, existingAction2),
-                scanType = "initial",
+                broker = testBroker1,
+                step = ScanStepActions(
+                    stepType = "scan",
+                    actions = listOf(existingAction1, existingAction2),
+                    scanType = "initial",
+                ),
             )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = scanStep,
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = 0, // At the beginning
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val conditionActions = listOf(conditionAction1)
         val event = ConditionExpectationSucceeded(conditionActions = conditionActions)
 
         val result = testee.invoke(state, event)
 
-        val updatedScanStep = result.nextState.brokerStepsToExecute[0] as ScanStep
+        val updatedScanStep = result.nextState.brokerStep as ScanStep
         val expectedActions =
             listOf(
                 existingAction1,
                 conditionAction1, // Inserted after index 0
                 existingAction2,
             )
-        assertEquals(expectedActions, updatedScanStep.actions)
+        assertEquals(expectedActions, updatedScanStep.step.actions)
         assertEquals(1, result.nextState.currentActionIndex)
     }
 
@@ -297,25 +341,30 @@ class ConditionExpectationSucceededEventHandlerTest {
     fun whenConditionActionsInsertedAtEndThenActionsAreAppended() = runTest {
         val scanStep =
             ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(existingAction1, existingAction2),
-                scanType = "initial",
+                broker = testBroker1,
+                step = ScanStepActions(
+                    stepType = "scan",
+                    actions = listOf(existingAction1, existingAction2),
+                    scanType = "initial",
+                ),
             )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = scanStep,
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = 1, // At the last action
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val conditionActions = listOf(conditionAction1, conditionAction2)
         val event = ConditionExpectationSucceeded(conditionActions = conditionActions)
 
         val result = testee.invoke(state, event)
 
-        val updatedScanStep = result.nextState.brokerStepsToExecute[0] as ScanStep
+        val updatedScanStep = result.nextState.brokerStep as ScanStep
         val expectedActions =
             listOf(
                 existingAction1,
@@ -323,74 +372,39 @@ class ConditionExpectationSucceededEventHandlerTest {
                 conditionAction1, // Inserted at end
                 conditionAction2, // Inserted at end
             )
-        assertEquals(expectedActions, updatedScanStep.actions)
+        assertEquals(expectedActions, updatedScanStep.step.actions)
         assertEquals(2, result.nextState.currentActionIndex)
-    }
-
-    @Test
-    fun whenMultipleBrokerStepsThenOnlyCurrentStepIsUpdated() = runTest {
-        val scanStep1 =
-            ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(existingAction1),
-                scanType = "initial",
-            )
-        val scanStep2 =
-            ScanStep(
-                brokerName = "$testBrokerName-2",
-                stepType = "scan",
-                actions = listOf(existingAction2),
-                scanType = "initial",
-            )
-        val state =
-            State(
-                runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep1, scanStep2),
-                profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
-                currentActionIndex = 0,
-            )
-        val conditionActions = listOf(conditionAction1)
-        val event = ConditionExpectationSucceeded(conditionActions = conditionActions)
-
-        val result = testee.invoke(state, event)
-
-        // Only the first step should be updated
-        val updatedScanStep1 = result.nextState.brokerStepsToExecute[0] as ScanStep
-        val unchangedScanStep2 = result.nextState.brokerStepsToExecute[1] as ScanStep
-
-        assertEquals(2, updatedScanStep1.actions.size)
-        assertEquals(listOf(existingAction1, conditionAction1), updatedScanStep1.actions)
-
-        assertEquals(1, unchangedScanStep2.actions.size)
-        assertEquals(listOf(existingAction2), unchangedScanStep2.actions)
     }
 
     @Test
     fun whenEmptyConditionActionsListThenOnlyActionIndexIsIncremented() = runTest {
         val scanStep =
             ScanStep(
-                brokerName = testBrokerName,
-                stepType = "scan",
-                actions = listOf(existingAction1, existingAction2),
-                scanType = "initial",
+                broker = testBroker1,
+                step = ScanStepActions(
+                    stepType = "scan",
+                    actions = listOf(existingAction1, existingAction2),
+                    scanType = "initial",
+                ),
             )
         val state =
             State(
                 runType = RunType.MANUAL,
-                brokerStepsToExecute = listOf(scanStep),
+                brokerStep = scanStep,
                 profileQuery = testProfileQuery,
-                currentBrokerStepIndex = 0,
                 currentActionIndex = testCurrentActionIndex,
+                stageStatus = PirStageStatus(
+                    currentStage = PirStage.OTHER,
+                    stageStartMs = 0,
+                ),
             )
         val event = ConditionExpectationSucceeded(conditionActions = emptyList())
 
         val result = testee.invoke(state, event)
 
         // Actions should remain unchanged
-        val updatedScanStep = result.nextState.brokerStepsToExecute[0] as ScanStep
-        assertEquals(listOf(existingAction1, existingAction2), updatedScanStep.actions)
+        val updatedScanStep = result.nextState.brokerStep as ScanStep
+        assertEquals(listOf(existingAction1, existingAction2), updatedScanStep.step.actions)
 
         // Action index should still increment
         assertEquals(testCurrentActionIndex + 1, result.nextState.currentActionIndex)

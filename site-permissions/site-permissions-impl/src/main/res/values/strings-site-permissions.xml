@@ -18,8 +18,8 @@
 <!-- smartling.instruction_attributes = instruction -->
 <resources>
     <!-- DRM Permission -->
-    <string name="drmSiteDialogTitle" instruction="Placeholder is the name of a website">\"%1$s\" wants to open your DRM software</string>
-    <string name="drmSiteDialogSubtitle">Digital Rights Management software is required to play protected media content, but also provides access to device identifiers. Only grant permission to sites you trust with this data. You can manage permissions at any time in Settings. <annotation type="drm_learn_more_link">Learn More</annotation></string>
+    <string name="drmSitePermissionDialogTitle" instruction="Placeholder is the name of a website">\"%1$s\" wants to open your Digital Rights Management (DRM) software</string>
+    <string name="drmSitePermissionDialogSubtitle" instruction="Placeholder is the name of a website">If you pick \"Deny\" videos on the site may become unplayable, but %1$s will not have access to device identifiers provided by DRM software. You can manage permissions at any time in Settings. <annotation type="drm_learn_more_link">Learn More</annotation></string>
     <string name="drmSiteDialogAllowAlways">Always</string>
     <string name="drmSiteDialogAllowOnce">Only for This Session</string>
     <string name="drmSiteDialogDenyAlways">Deny Always</string>
@@ -57,6 +57,10 @@
     <string name="systemPermissionDialogCameraAndAudioDeniedContent">Sites can only use your camera and microphone if you allow DuckDuckGo to ask for access.</string>
     <string name="systemPermissionsDeniedDialogPositiveButton">Open Settings</string>
     <string name="systemPermissionsDeniedDialogNegativeButton">Cancel</string>
+    <string name="duckAiMicPermissionDeniedSnackBarMessage">Microphone permission needed for voice features</string>
+    <string name="duckAiMicPermissionDeniedDialogTitle">DuckDuckGo needs to access your microphone</string>
+    <string name="duckAiMicPermissionDeniedDialogContent">Microphone permissions are needed if you want to use Voice Chat in Duck.ai</string>
+    <string name="duckAiMicPermissionDeniedDialogPositiveButton">Change Permissions</string>
 
     <string name="sitePermissionsSettingsDescription">Sites you visit may ask for access to your device’s location, camera, microphone, or DRM (Digital Rights Management) software. They won’t be able to access these unless you explicitly give them permission.</string>
     <string name="sitePermissionsSettingsEnablePermissionTitle">Allow all sites to ask for:</string>

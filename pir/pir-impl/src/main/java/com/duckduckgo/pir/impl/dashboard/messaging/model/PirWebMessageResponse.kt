@@ -99,7 +99,7 @@ sealed interface PirWebMessageResponse {
     }
 
     data class ScanResult(
-        val id: Long? = 0L,
+        val id: Long,
         val dataBroker: DataBroker,
         val name: String,
         val addresses: List<ScanResultAddress>,
@@ -107,6 +107,7 @@ sealed interface PirWebMessageResponse {
         val relatives: List<String>,
         val foundDate: Long,
         val optOutSubmittedDate: Long?,
+        val optOutFormSubmittedDate: Long?,
         val estimatedRemovalDate: Long?,
         val removedDate: Long?,
         val hasMatchingRecordOnParentBroker: Boolean,
@@ -131,6 +132,7 @@ sealed interface PirWebMessageResponse {
 
     data class GetFeatureConfigResponse(
         val useUnifiedFeedback: Boolean,
+        val isBeta: Boolean,
     ) : PirWebMessageResponse
 
     data class MaintenanceScanStatusResponse(

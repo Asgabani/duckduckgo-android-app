@@ -84,6 +84,7 @@
     <string name="subscriptionSettingSectionHelpAndSupport">Pagalba ir palaikymas</string>
     <string name="subscriptionSettingSendFeedback">Siųsti atsiliepimą</string>
     <string name="subscriptionSettingActivating">Aktyvavimas</string>
+    <string name="subscriptionSettingManagePlan">Tvarkyti mokėjimą</string>
 
     <!--Purchase Subscriptions-->
     <string name="purchaseCompletedTitle">Viskas paruošta.</string>
@@ -103,8 +104,8 @@
     <string name="changePlanDescription">Jūsų prenumerata buvo įsigyta per „Apple App Store“. Norėdami pakeisti savo plano ar atsiskaitymo nustatymus, eikite į Nustatymai &gt; „Apple“ paskyra &gt; Prenumeratos įrenginyje, prijungtame prie tos pačios „Apple“ paskyros, naudotos prenumeratai įsigyti.</string>
 
     <!-- PIR Activity-->
-    <string name="pirTitle">Aktyvuokite „Privacy Pro“ darbalaukyje, kad nustatytumėte Asmeninės informacijos pašalinimą.</string>
-    <string name="pirDescription">„DuckDuckGo“ naršyklėje, skirtoje darbalaukiui, eikite į <b>Nustatymai &gt; „Privacy Pro“</b> ir spustelėkite <b>Turiu prenumeratą</b>, kad pradėtumėte.</string>
+    <string name="pirTitle">Aktyvuokite „DuckDuckGo“ prenumeratą darbalaukyje, kad nustatytumėte asmeninės informacijos pašalinimą</string>
+    <string name="pirDescription">Staliniam kompiuteriui skirtoje naršyklėje „DuckDuckGo“ eik į <b>Nustatymai &gt; Prenumeruoti „DuckDuckGo“ </b> ir spustelėk <b>Turiu prenumeratą</b>, kad pradėtum.</string>
     <string name="pirWindowsButton" translatable="false">Windows</string>
     <string name="pirMacOsButton" translatable="false">Mac</string>
 
@@ -147,18 +148,14 @@
     <string name="feedbackSubCategoryItrAdvisorUnhelpful">Skambutis konsultantui buvo nenaudingas</string>
     <string name="feedbackSubCategoryItrOther">Kiti</string>
 
-    <string name="feedbackSubCategorySubsOtp">Vienkartinis slaptažodis</string>
-    <string name="feedbackSubCategorySubsOther">Kiti</string>
+    <string name="feedbackSubCategorySubsOtp">Problema su vienkartiniu slaptažodžiu</string>
+    <string name="feedbackSubCategorySubsOther">Kažkas kito</string>
 
     <string name="feedbackSubmitVpnHeader">Ar radote problemą, kurios nėra mūsų <annotation type="faqs_link">pagalbos centre</annotation> ? Mes tikrai norime apie tai sužinoti.</string>
     <string name="feedbackSubmitVpnDescriptionHint">Praneškite, kas vyksta...</string>
     <string name="feedbackSubmitVpnDisclaimer">"Be pirmiau įvestos informacijos, kartu su jūsų atsiliepimais siunčiame anoniminę informaciją:\n\n• Ar kai kurios naršyklės funkcijos yra aktyvios\n• Apibendrinta programėlės diagnostika (pvz., klaidų kodai)\n\nSpausdami „Pateikti“ sutinkate, kad „DuckDuckGo“ gali naudoti pateiktą informaciją programėlei tobulinti."</string>
     <string name="feedbackSubmitVpnSubmit">Pateikti</string>
     <string name="feedbackSubmitCompletedMessage">Dėkojame! Atsiliepimas pateiktas.</string>
-    <string name="feedbackSubmitFailedMessage">Įvyko klaida</string>
-
-    <string name="feedbackSubmitEmailByLine">Pateikite el. paštą, jei norėtumėte, kad susisiektume su jumis dėl šios problemos (galbūt negalėsime atsakyti į visas problemas):</string>
-    <string name="feedbackSubmitEmailHint">El. paštas (neprivaloma)</string>
 
     <string name="feedbackSubmitGeneralDescriptionHint">Pateikite mums savo atsiliepimą...</string>
     <string name="feedbackSubmitFeatureRequestDescriptionHint">Kokią funkciją norėtumėte pamatyti?</string>
@@ -168,16 +165,7 @@
     <string name="activitySubscriptions">Prenumeratos</string>
     <string name="activitySubscriptionSettings">Prenumeratos nustatymai</string>
     <string name="activityActivateSubscription">Turiu prenumeratą</string>
-    <string name="activityPir" translatable="false">Privacy Pro</string>
     <string name="activitySendFeedback">Siųsti atsiliepimą</string>
-
-    <!-- Dynamic Switch % -->
-    <string name="switchBottomSheetDynamicTitleUpgrade" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Sutaupykite %1$s %% su metiniu planu!</string>
-    <string name="switchBottomSheetDynamicTitleDowngrade" instruction="%1$s is the savings percentage when using a yearly plan instead of monthly (e.g. 16)">Sutaupote %1$s %% su\nmetiniu planu!</string>
-    <string name="subscriptionSettingSwitchUpgradeDynamic" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Pereikite prie metinio plano ir sutaupykite %1$s %%</string>
-
-    <!-- Privacy Pro Rebranding-->
-    <string name="subscriptionSettingRebrandingMessage">„Privacy Pro“ dabar tiesiog vadinama „DuckDuckGo“ prenumerata.</string>
 
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitle">Prenumeratoriai gauna mūsų VPN, pažangius dirbtinio intelekto modelius „Duck.ai“, asmens duomenų šalinimas ir tapatybės vagystės duomenų atkūrimas.</string>
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitleRow">Prenumeratoriai gauna mūsų VPN, pažangius dirbtinio intelekto modelius „Duck.ai“ platformoje ir tapatybės vagystės atkūrimo paslaugą.</string>
@@ -187,9 +175,32 @@
     <string name="feedbackSubCategoryDuckAiLoginThirdPartyBrowser">Negaliu pasiekti „Duck.ai“ su savo prenumerata kitose naršyklėse.</string>
     <string name="feedbackSubCategoryDuckAiOther">Kiti „Duck.ai“ atsiliepimai</string>
 
-    <string name="subscriptionSettingSectionTitle" translatable="false">DuckDuckGo Subscription</string>
+    <string name="subscriptionSettingSectionTitle">„DuckDuckGo“ prenumerata</string>
     <string name="subscriptionSettingSubscribeSecure">Apsaugok savo Wi-Fi ir kalbėkis privačiai su pažangiais DI modeliais</string>
 
     <string name="feedbackGeneralSubscription">Prenumerata</string>
+
+    <!-- Pro tier changes -->
+    <string name="feedbackSubCategorySubsUnableToAccessProFeatures">Nepavyksta pasiekti „Plus“ arba „Pro“ lygio funkcijų</string>
+    <string name="subscriptionsProUpgradeTitle">Atnaujinkite į „Pro“</string>
+    <string name="subscriptionsProUpgradeMessage">Pasiek galingesnį DI</string>
+    <string name="subscriptionSettingSectionManageSubscription">Tvarkyti prenumeratą</string>
+    <string name="subscriptionSettingViewAllPlans">Peržiūrėti visus planus</string>
+    <string name="subscriptionSettingManagePaymentOrCancel">Tvarkyti mokėjimą arba atšaukti</string>
+
+    <!-- Pending plan changes -->
+    <string name="subscriptionPendingPlanChangeDowngradePanel" instruction="First placeholder is the Tier name (e.g. Plus, Pro), second is date in short format (month day)">%2$s tavo planas pasikeis į žemesnio lygio %1$s.</string>
+    <string name="subscriptionPendingPlanChangeUpgrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">%2$s tavo planas atsinaujins į %1$s.</string>
+    <string name="subscriptionPendingPlanChangeDowngrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">%2$s tavo planas pasikeis į žemesnio lygio %1$s.</string>
+    <string name="planNamePlusMonthly">Mėnesinis „Plus“</string>
+    <string name="planNamePlusYearly">Metinis „Plus“</string>
+    <string name="planNameProMonthly">Mėnesinis „Pro“</string>
+    <string name="planNameProYearly">Metinis „Pro“</string>
+    <string name="tierPlusName" translatable="false">PLUS</string>
+    <string name="tierProName" translatable="false">PRO</string>
+
+    <!-- Content Descriptions -->
+    <string name="subscriptionExpiredStatusIconContentDescription">Prenumerata baigėsi</string>
+    <string name="subscriptionActiveStatusIconContentDescription">Prenumerata aktyvi</string>
 
 </resources>

@@ -23,10 +23,10 @@ import android.widget.Toast
 import com.duckduckgo.anvil.annotations.InjectWith
 import com.duckduckgo.app.browser.databinding.ViewStatisticsAttributedMetricsBinding
 import com.duckduckgo.app.global.install.AppInstallStore
-import com.duckduckgo.app.referral.AppReferrerDataStore
 import com.duckduckgo.app.statistics.store.StatisticsDataStore
 import com.duckduckgo.common.ui.viewbinding.viewBinding
 import com.duckduckgo.di.scopes.ViewScope
+import com.duckduckgo.referral.api.AppReferrer
 import dagger.android.support.AndroidSupportInjection
 import java.text.SimpleDateFormat
 import java.util.*
@@ -41,14 +41,14 @@ class StatisticsInternalInfoView @JvmOverloads constructor(
 
     @Inject lateinit var store: StatisticsDataStore
 
-    @Inject lateinit var referrerDataStore: AppReferrerDataStore
+    @Inject lateinit var appReferrer: AppReferrer
 
     @Inject lateinit var appInstallStore: AppInstallStore
 
     private val binding: ViewStatisticsAttributedMetricsBinding by viewBinding()
 
     private val dateETFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("US/Eastern")
+        timeZone = TimeZone.getTimeZone("America/New_York")
     }
     override fun onAttachedToWindow() {
         AndroidSupportInjection.inject(this)
@@ -73,11 +73,11 @@ class StatisticsInternalInfoView @JvmOverloads constructor(
         }
 
         binding.originInput.apply {
-            text = referrerDataStore.utmOriginAttributeCampaign ?: "unknown"
+            text = appReferrer.getOriginAttributeCampaign() ?: "unknown"
         }
 
         binding.originInputSave.setOnClickListener {
-            referrerDataStore.utmOriginAttributeCampaign = binding.originInput.text.toString()
+            appReferrer.setOriginAttributeCampaign(binding.originInput.text.toString())
             Toast.makeText(this.context, "Origin updated", Toast.LENGTH_SHORT).show()
         }
 

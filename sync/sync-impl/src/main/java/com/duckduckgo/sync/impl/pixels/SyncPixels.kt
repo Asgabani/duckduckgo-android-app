@@ -23,16 +23,39 @@ import com.duckduckgo.common.utils.plugins.pixel.PixelParamRemovalPlugin
 import com.duckduckgo.common.utils.plugins.pixel.PixelParamRemovalPlugin.PixelParameter
 import com.duckduckgo.common.utils.plugins.pixel.PixelParamRemovalPlugin.PixelParameter.Companion.removeAtb
 import com.duckduckgo.di.scopes.AppScope
-import com.duckduckgo.sync.api.engine.SyncableType
+import com.duckduckgo.sync.api.engine.DeletableType
+import com.duckduckgo.sync.api.engine.SyncFeatureType
 import com.duckduckgo.sync.impl.API_CODE
+import com.duckduckgo.sync.impl.AccountErrorCodes
+import com.duckduckgo.sync.impl.DispatchOutcome
 import com.duckduckgo.sync.impl.Result.Error
+import com.duckduckgo.sync.impl.SyncCodeType
+import com.duckduckgo.sync.impl.SyncFeature
 import com.duckduckgo.sync.impl.pixels.SyncPixelName.SYNC_DAILY
 import com.duckduckgo.sync.impl.pixels.SyncPixelName.SYNC_DAILY_SUCCESS_RATE_PIXEL
 import com.duckduckgo.sync.impl.pixels.SyncPixelName.SYNC_OBJECT_LIMIT_EXCEEDED_DAILY
 import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.CONNECTED_DEVICES_WHEN_DELETING
 import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_FEATURE_PROMOTION_SOURCE
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_CODE_TYPE
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_CODE_VERSION
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_FLOW_VERSION
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_MY_KIND
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_MY_ROLE
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_PATH
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_PEER_KIND
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_REASON
 import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_SCREEN_TYPE
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_TIMEOUT_STAGE
+import com.duckduckgo.sync.impl.pixels.SyncPixelParameters.SYNC_SETUP_UI_VERSION
+import com.duckduckgo.sync.impl.pixels.SyncPixels.AnotherDevicePromptOption
+import com.duckduckgo.sync.impl.pixels.SyncPixels.CancellationReason
+import com.duckduckgo.sync.impl.pixels.SyncPixels.CodeVersion
+import com.duckduckgo.sync.impl.pixels.SyncPixels.PeerKind
 import com.duckduckgo.sync.impl.pixels.SyncPixels.ScreenType
+import com.duckduckgo.sync.impl.pixels.SyncPixels.SetupFailureReason
+import com.duckduckgo.sync.impl.pixels.SyncPixels.SetupPath
+import com.duckduckgo.sync.impl.pixels.SyncPixels.SetupRole
+import com.duckduckgo.sync.impl.pixels.SyncPixels.TimeoutStage
 import com.duckduckgo.sync.impl.stats.SyncStatsRepository
 import com.duckduckgo.sync.store.SharedPrefsProvider
 import com.squareup.anvil.annotations.ContributesBinding
@@ -85,10 +108,14 @@ interface SyncPixels {
     )
 
     fun fireDailySyncApiErrorPixel(
-        feature: SyncableType,
+        feature: SyncFeatureType,
         apiError: Error,
     )
 
+    fun fireSyncSettingsShown()
+    fun fireBackupThisDeviceTapped()
+    fun fireRecoverSyncDataTapped()
+    fun fireRecoverSyncDataConfirmed()
     fun fireAskUserToSwitchAccount()
     fun fireUserAcceptedSwitchingAccount()
     fun fireUserCancelledSwitchingAccount()
@@ -96,25 +123,146 @@ interface SyncPixels {
     fun fireUserSwitchedLogoutError()
     fun fireUserSwitchedLoginError()
     fun fireTimeoutOnDeepLinkSetup()
+    fun fireScanCodeScreenShown(screenType: ScreenType)
     fun fireSyncBarcodeScreenShown(screenType: ScreenType)
-    fun fireSyncSetupFinishedSuccessfully(screenType: ScreenType)
-    fun fireSyncSetupAbandoned(screenType: ScreenType)
+    fun fireSyncSetupFinishedSuccessfully(
+        screenType: ScreenType,
+        path: SetupPath? = null,
+        myRole: SetupRole? = null,
+        peerKind: PeerKind? = null,
+    )
+    fun fireSyncSetupAbandoned(screenType: ScreenType, reason: CancellationReason? = null)
     fun fireSyncSetupManualCodeScreenShown(screenType: ScreenType)
-    fun fireSyncSetupCodePastedParseSuccess(screenType: ScreenType)
-    fun fireSyncSetupCodePastedParseFailure(screenType: ScreenType)
+    fun fireSyncSetupCodePastedParseSuccess(screenType: ScreenType, codeVersion: CodeVersion, codeType: SyncCodeType? = null)
+    fun fireSyncSetupCodePastedParseFailure(screenType: ScreenType, reason: SetupFailureReason? = null)
     fun fireSyncSetupCodeCopiedToClipboard(screenType: ScreenType)
-    fun fireBarcodeScannerParseError(screenType: ScreenType)
-    fun fireBarcodeScannerParseSuccess(screenType: ScreenType)
+    fun fireBarcodeScannerParseError(screenType: ScreenType, reason: SetupFailureReason? = null)
+    fun fireBarcodeScannerParseSuccess(screenType: ScreenType, codeVersion: CodeVersion, codeType: SyncCodeType? = null)
+    fun fireSyncAnotherDevicePromptShown()
+    fun fireSyncAnotherDevicePromptOptionTapped(option: AnotherDevicePromptOption)
+
+    /**
+     * "Setup failed" — a v2 setup that started (code recognized) then failed with an error (not a
+     * user cancellation). [screenType] identifies the originating screen.
+     * [path]/[myRole]/[peerKind] are best-effort and omitted when unknown.
+     * [timeoutStage] is only meaningful when [reason] is [SetupFailureReason.SESSION_TIMEOUT] and
+     * identifies which phase of the flow was reached at the deadline.
+     */
+    fun fireSyncSetupFailed(
+        screenType: ScreenType,
+        reason: SetupFailureReason,
+        path: SetupPath? = null,
+        myRole: SetupRole? = null,
+        peerKind: PeerKind? = null,
+        timeoutStage: TimeoutStage? = null,
+    )
 
     enum class ScreenType(val value: String) {
         SYNC_CONNECT("connect"),
         SYNC_EXCHANGE("exchange"),
+    }
+
+    /** Protocol version of the code that was scanned/pasted, per the "Code recognized" telemetry. */
+    enum class CodeVersion(val value: String) {
+        V1("v1"),
+        V2("v2"),
+    }
+
+    /** Whether a successful setup was a recovery-code login or a device pairing. v2 only. */
+    enum class SetupPath(val value: String) {
+        RECOVERY("recovery"),
+        PAIRING("pairing"),
+    }
+
+    /** This device's elected role in a v2 pairing. */
+    enum class SetupRole(val value: String) {
+        HOST("host"),
+        JOINER("joiner"),
+    }
+
+    /** The peer device's credential kind in a v2 pairing. */
+    enum class PeerKind(val value: String) {
+        DDG("ddg"),
+        THIRD_PARTY("3party"),
+    }
+
+    /**
+     * Why a setup was cancelled, per the "Cancellation" telemetry. Based on the v2 protocol state at
+     * the moment of cancellation: [SCANNING_CANCELLED] before the exchange engages a peer,
+     * [CANCELLED_BEFORE_FINISHED] mid-exchange, [CONFIRMATION_DENIED] when this device denied the prompt.
+     */
+    enum class CancellationReason(val value: String) {
+        SCANNING_CANCELLED("scanning_cancelled"),
+        CONFIRMATION_DENIED("sync_confirmation_denied"),
+        CANCELLED_BEFORE_FINISHED("cancelled_before_finished"),
+    }
+
+    enum class AnotherDevicePromptOption(val value: String) {
+        THIS_DEVICE_ONLY("this_device_only"),
+        WITH_ANOTHER_DEVICE("sync_another_device"),
+    }
+
+    enum class SetupFailureReason(val value: String) {
+        SESSION_TIMEOUT("session_timeout"),
+        TRANSPORT_FAILURE("transport_failure"),
+        UNRECOGNIZED_CODE("unrecognized_code"),
+        NEEDS_UPGRADE("needs_upgrade"),
+        INCOMPATIBLE_CODE("incompatible_code"),
+        INVALID_CREDENTIALS("invalid_credentials"),
+        ACCOUNT_CREATION_FAILED("account_creation_failed"),
+        ACCOUNT_UPGRADE_FAILED("account_upgrade_failed"),
+        ALREADY_UPGRADED("already_upgraded"),
+        ALREADY_PAIRED("already_paired"),
+        RECOVERY_CODE_PREPARATION_FAILED("recovery_code_preparation_failed"),
+        MISSING_3PARTY_CREDENTIAL("missing_3party_credential"),
+        UNDECRYPTABLE_3PARTY_CREDENTIAL("undecryptable_3party_credential"),
+        ACCOUNT_EXTEND_FAILED("account_extend_failed"),
+        MISSING_3PARTY_KEY("missing_3party_key"),
+        LOCAL_STORAGE_FAILED("local_storage_failed"),
+        PEER_RECOVERY_CODE_UNAVAILABLE("peer_recovery_code_unavailable"),
+        UNEXPECTED_SECOND_HELLO("unexpected_second_hello"),
+        UNEXPECTED_EVENT("unexpected_event"),
+        PAIRING_SESSION_NOT_READY("pairing_session_not_ready"),
+        RELAY_CHANNEL_UNAVAILABLE("relay_channel_unavailable"),
+        PROTOCOL_ERROR("protocol_error"),
+        UNEXPECTED_FAILURE("unexpected_failure"),
+    }
+
+    enum class TimeoutStage(val value: String) {
+        WAITING_FOR_PEER_HELLO("waiting_for_peer_hello"),
+        WAITING_FOR_PEER_STATUS("waiting_for_peer_status"),
+        WAITING_FOR_CONFIRMATION("waiting_for_confirmation"),
+        WAITING_FOR_RECOVERY_CODE("waiting_for_recovery_code"),
+        LOGGING_IN("logging_in"),
     }
     fun fireSetupDeepLinkFlowStarted()
     fun fireSetupDeepLinkFlowSuccess()
     fun fireSetupDeepLinkFlowAbandoned()
     fun fireUserConfirmedToTurnOffSync()
     fun fireUserConfirmedToTurnOffSyncAndDelete(connectedDevices: Int)
+    fun fireSetupSyncPromoBookmarkAddedDialogDismissed()
+    fun fireSetupSyncPromoBookmarkAddedDialogConfirmed()
+    fun fireSetupSyncPromoBookmarkAddedDialogShown()
+
+    fun fireAiChatActive()
+    fun fireAiChatsRescopeTokenError(error: Error)
+
+    fun fireUnifiedDeviceListPixel(event: UnifiedDeviceListPixel)
+
+    fun fireAutoRestoreSetupToggleShown()
+    fun fireAutoRestoreSetupToggleOptedOut()
+    fun fireAutoRestoreSettingsReadyShown(source: String)
+    fun fireAutoRestoreSettingsRestoreTapped(source: String)
+    fun fireAutoRestoreSettingsSkipRestoreTapped(source: String)
+    fun fireAutoRestoreSettingsCancelled(source: String)
+    fun fireAutoRestoreSettingsManualRecoveryShown()
+    fun fireAutoRestoreSettingsPageShown()
+    fun fireAutoRestoreSettingsPageToggleEnabled()
+    fun fireAutoRestoreSettingsPageToggleDisabled()
+    fun fireAutoRestoreSuccess(source: String)
+    fun fireAutoRestoreFailure(source: String, errorCode: String, errorMessage: String)
+    fun fireAutoRestorePreservedAccountCleared(source: String)
+    fun fireAutoRestorePreservedAccountClearFailed(source: String, errorCode: String, errorMessage: String)
 }
 
 @ContributesBinding(AppScope::class)
@@ -123,10 +271,74 @@ class RealSyncPixels @Inject constructor(
     private val pixel: Pixel,
     private val statsRepository: SyncStatsRepository,
     private val sharedPrefsProvider: SharedPrefsProvider,
+    private val syncFeature: SyncFeature,
 ) : SyncPixels {
 
     private val preferences: SharedPreferences by lazy {
         sharedPrefsProvider.getSharedPrefs(SYNC_PIXELS_PREF_FILE)
+    }
+
+    /**
+     * Common metadata describing the setup flow this device is opening:
+     * - [SYNC_SETUP_FLOW_VERSION]: "v2" when the device is on the v2 connect/exchange stack
+     *   ([SyncFeature.canUseV2ConnectFlow]), "v1" otherwise. Independent of which code version is
+     *   actually displayed (that is gated separately by [SyncFeature.canShowV2ConnectCode]).
+     * - [SYNC_SETUP_UI_VERSION]: "v2" when the simplified sync UI is enabled ([SyncFeature.useSimplifiedSync])
+     *   and "v1" on the legacy setup screens.
+     * - [SYNC_SETUP_MY_KIND]: always "ddg" — this is the native DuckDuckGo client.
+     */
+    private fun setupFlowMetadata(): Map<String, String> = buildMap {
+        put(SYNC_SETUP_FLOW_VERSION, if (syncFeature.canUseV2ConnectFlow().isEnabled()) FLOW_VERSION_V2 else FLOW_VERSION_V1)
+        put(SYNC_SETUP_MY_KIND, MY_KIND_DDG)
+        putAll(setupUiMetadata())
+    }
+
+    /**
+     * Which sync setup UI the user is looking at: [SYNC_SETUP_UI_VERSION] is "v2" when the simplified
+     * sync UI is enabled ([SyncFeature.useSimplifiedSync]) and "v1" on the legacy setup screens.
+     */
+    private fun setupUiMetadata(): Map<String, String> = buildMap {
+        val version = if (syncFeature.useSimplifiedSync().isEnabled()) UI_VERSION_V2 else UI_VERSION_V1
+        put(SYNC_SETUP_UI_VERSION, version)
+    }
+
+    /**
+     * Params for the "Code recognized" pixels (scanner/manual-entry success): the screen [source],
+     * the recognized [codeVersion] (what was scanned/pasted), the common [setupFlowMetadata]
+     * (flow_version + my_kind), and — only when known — the [codeType]. The legacy/v1 path does not
+     * report a code type, so [codeType] is omitted there; the v2 path always supplies it.
+     */
+    private fun recognizedCodeParams(
+        screenType: ScreenType,
+        codeVersion: CodeVersion,
+        codeType: SyncCodeType?,
+    ): Map<String, String> = buildMap {
+        put(SYNC_SETUP_SCREEN_TYPE, screenType.value)
+        put(SYNC_SETUP_CODE_VERSION, codeVersion.value)
+        when (codeType) {
+            SyncCodeType.RECOVERY -> put(SYNC_SETUP_CODE_TYPE, CODE_TYPE_RECOVERY)
+            SyncCodeType.LINKING -> put(SYNC_SETUP_CODE_TYPE, CODE_TYPE_LINKING)
+            null -> {}
+        }
+        putAll(setupFlowMetadata())
+    }
+
+    /**
+     * Params for the "Setup success" pixel: the screen [source], the common [setupFlowMetadata]
+     * (flow_version + my_kind), and — v2 only — the [path] (recovery/pairing) plus, for pairing, the
+     * elected [myRole] and the [peerKind]. Each is omitted when null.
+     */
+    private fun setupSuccessParams(
+        screenType: ScreenType,
+        path: SetupPath?,
+        myRole: SetupRole?,
+        peerKind: PeerKind?,
+    ): Map<String, String> = buildMap {
+        put(SYNC_SETUP_SCREEN_TYPE, screenType.value)
+        if (path != null) put(SYNC_SETUP_PATH, path.value)
+        if (myRole != null) put(SYNC_SETUP_MY_ROLE, myRole.value)
+        if (peerKind != null) put(SYNC_SETUP_PEER_KIND, peerKind.value)
+        putAll(setupFlowMetadata())
     }
 
     override fun fireDailyPixel() {
@@ -134,11 +346,13 @@ class RealSyncPixels @Inject constructor(
     }
 
     override fun fireDailySuccessRatePixel() {
-        val dailyStats = statsRepository.getYesterdayDailyStats()
-        val payload = mapOf(
-            SyncPixelParameters.COUNT to dailyStats.attempts,
-            SyncPixelParameters.DATE to dailyStats.date,
-        ).plus(dailyStats.apiErrorStats).plus(dailyStats.operationErrorStats)
+        val payload = buildMap {
+            val dailyStats = statsRepository.getYesterdayDailyStats()
+            put(SyncPixelParameters.COUNT, dailyStats.attempts)
+            put(SyncPixelParameters.DATE, dailyStats.date)
+            putAll(dailyStats.apiErrorStats)
+            putAll(dailyStats.operationErrorStats)
+        }
         tryToFireDailyPixel(SYNC_DAILY_SUCCESS_RATE_PIXEL, payload)
     }
 
@@ -149,15 +363,30 @@ class RealSyncPixels @Inject constructor(
     }
 
     override fun fireLoginPixel() {
-        pixel.fire(SyncPixelName.SYNC_LOGIN)
+        pixel.fire(
+            SyncPixelName.SYNC_LOGIN,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireSignupConnectPixel(source: String?) {
-        pixel.fire(SyncPixelName.SYNC_SIGNUP_CONNECT, buildSourceMap(source))
+        pixel.fire(
+            SyncPixelName.SYNC_SIGNUP_CONNECT,
+            parameters = buildMap {
+                putAll(buildSourceMap(source))
+                putAll(setupUiMetadata())
+            },
+        )
     }
 
     override fun fireSignupDirectPixel(source: String?) {
-        pixel.fire(SyncPixelName.SYNC_SIGNUP_DIRECT, buildSourceMap(source))
+        pixel.fire(
+            SyncPixelName.SYNC_SIGNUP_DIRECT,
+            parameters = buildMap {
+                putAll(buildSourceMap(source))
+                putAll(setupUiMetadata())
+            },
+        )
     }
 
     override fun fireSyncAccountErrorPixel(
@@ -173,12 +402,13 @@ class RealSyncPixels @Inject constructor(
             SyncAccountOperation.DELETE_ACCOUNT -> fireDeleteAccountErrorPixel(result)
             SyncAccountOperation.USER_SIGNED_IN -> fireAlreadySignedInErrorPixel(result)
             SyncAccountOperation.CREATE_PDF -> fireSaveRecoveryPdfErrorPixel(result)
+            SyncAccountOperation.RESCOPE_TOKEN -> fireRescopeTokenErrorPixel(result)
             SyncAccountOperation.GENERIC -> fireSyncAccountErrorPixel(result)
         }
     }
 
     override fun fireDailySyncApiErrorPixel(
-        feature: SyncableType,
+        feature: SyncFeatureType,
         apiError: Error,
     ) {
         when (apiError.code) {
@@ -248,13 +478,18 @@ class RealSyncPixels @Inject constructor(
         result.fireAddingErrorAsParams(SyncPixelName.SYNC_CREATE_PDF_FAILURE)
     }
 
+    private fun fireRescopeTokenErrorPixel(result: Error) {
+        result.fireAddingErrorAsParams(SyncPixelName.SYNC_RESCOPE_TOKEN_FAILURE)
+    }
+
     private fun Error.fireAddingErrorAsParams(pixelName: SyncPixelName) {
         pixel.fire(
             pixelName,
-            mapOf(
-                SyncPixelParameters.ERROR_CODE to this.code.toString(),
-                SyncPixelParameters.ERROR_REASON to this.reason,
-            ),
+            parameters = buildMap {
+                put(SyncPixelParameters.ERROR_CODE, code.toString())
+                put(SyncPixelParameters.ERROR_REASON, reason)
+                putAll(setupUiMetadata())
+            },
         )
     }
 
@@ -290,101 +525,427 @@ class RealSyncPixels @Inject constructor(
     }
 
     override fun fireUserSwitchedAccount() {
-        pixel.fire(SyncPixelName.SYNC_USER_SWITCHED_ACCOUNT)
+        pixel.fire(
+            SyncPixelName.SYNC_USER_SWITCHED_ACCOUNT,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireSyncSettingsShown() {
+        pixel.fire(
+            SyncPixelName.SYNC_SETTINGS_SCREEN_SHOWN,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireBackupThisDeviceTapped() {
+        pixel.fire(
+            SyncPixelName.SYNC_SETTINGS_BACK_UP_THIS_DEVICE_TAPPED,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireRecoverSyncDataTapped() {
+        pixel.fire(
+            SyncPixelName.SYNC_SETTINGS_RECOVER_SYNC_DATA_TAPPED,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireRecoverSyncDataConfirmed() {
+        pixel.fire(
+            SyncPixelName.SYNC_SETTINGS_RECOVER_SYNC_DATA_CONFIRMED,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireAskUserToSwitchAccount() {
-        pixel.fire(SyncPixelName.SYNC_ASK_USER_TO_SWITCH_ACCOUNT)
+        pixel.fire(
+            SyncPixelName.SYNC_ASK_USER_TO_SWITCH_ACCOUNT,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireUserAcceptedSwitchingAccount() {
-        pixel.fire(SyncPixelName.SYNC_USER_ACCEPTED_SWITCHING_ACCOUNT)
+        pixel.fire(
+            SyncPixelName.SYNC_USER_ACCEPTED_SWITCHING_ACCOUNT,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireUserCancelledSwitchingAccount() {
-        pixel.fire(SyncPixelName.SYNC_USER_CANCELLED_SWITCHING_ACCOUNT)
+        pixel.fire(
+            SyncPixelName.SYNC_USER_CANCELLED_SWITCHING_ACCOUNT,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireUserSwitchedLoginError() {
-        pixel.fire(SyncPixelName.SYNC_USER_SWITCHED_LOGIN_ERROR)
+        pixel.fire(
+            SyncPixelName.SYNC_USER_SWITCHED_LOGIN_ERROR,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireTimeoutOnDeepLinkSetup() {
-        pixel.fire(SyncPixelName.SYNC_SETUP_DEEP_LINK_TIMEOUT)
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_DEEP_LINK_TIMEOUT,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireUserSwitchedLogoutError() {
-        pixel.fire(SyncPixelName.SYNC_USER_SWITCHED_LOGOUT_ERROR)
+        pixel.fire(
+            SyncPixelName.SYNC_USER_SWITCHED_LOGOUT_ERROR,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireSetupDeepLinkFlowStarted() {
-        pixel.fire(SyncPixelName.SYNC_SETUP_DEEP_LINK_FLOW_STARTED)
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_DEEP_LINK_FLOW_STARTED,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireSetupDeepLinkFlowSuccess() {
-        pixel.fire(SyncPixelName.SYNC_SETUP_DEEP_LINK_FLOW_SUCCESS)
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_DEEP_LINK_FLOW_SUCCESS,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireSetupDeepLinkFlowAbandoned() {
-        pixel.fire(SyncPixelName.SYNC_SETUP_DEEP_LINK_FLOW_ABANDONED)
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_DEEP_LINK_FLOW_ABANDONED,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireUserConfirmedToTurnOffSync() {
-        pixel.fire(SyncPixelName.SYNC_USER_CONFIRMED_TO_TURN_OFF_SYNC)
+        pixel.fire(
+            SyncPixelName.SYNC_USER_CONFIRMED_TO_TURN_OFF_SYNC,
+            parameters = setupUiMetadata(),
+        )
     }
 
     override fun fireUserConfirmedToTurnOffSyncAndDelete(connectedDevices: Int) {
-        val params = mapOf(CONNECTED_DEVICES_WHEN_DELETING to connectedDevices.toString())
-        pixel.fire(SyncPixelName.SYNC_USER_CONFIRMED_TO_TURN_OFF_SYNC_AND_DELETE, parameters = params)
+        pixel.fire(
+            SyncPixelName.SYNC_USER_CONFIRMED_TO_TURN_OFF_SYNC_AND_DELETE,
+            parameters = buildMap {
+                put(CONNECTED_DEVICES_WHEN_DELETING, connectedDevices.toString())
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireSetupSyncPromoBookmarkAddedDialogDismissed() {
+        pixel.fire(SyncPixelName.SYNC_SETUP_PROMO_BOOKMARK_ADDED_DIALOG_DISMISSED)
+    }
+
+    override fun fireSetupSyncPromoBookmarkAddedDialogConfirmed() {
+        pixel.fire(SyncPixelName.SYNC_SETUP_PROMO_BOOKMARK_ADDED_DIALOG_CONFIRMED)
+    }
+
+    override fun fireSetupSyncPromoBookmarkAddedDialogShown() {
+        pixel.fire(SyncPixelName.SYNC_SETUP_PROMO_BOOKMARK_ADDED_DIALOG_SHOWN)
+    }
+
+    override fun fireScanCodeScreenShown(screenType: ScreenType) {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_SCAN_QR_SCREEN_SHOWN,
+            parameters = buildMap {
+                put(SYNC_SETUP_SCREEN_TYPE, screenType.value)
+                putAll(setupFlowMetadata())
+            },
+        )
     }
 
     override fun fireSyncBarcodeScreenShown(screenType: ScreenType) {
-        val params = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value)
-        pixel.fire(SyncPixelName.SYNC_SETUP_BARCODE_SCREEN_SHOWN, parameters = params)
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_BARCODE_SCREEN_SHOWN,
+            parameters = buildMap {
+                put(SYNC_SETUP_SCREEN_TYPE, screenType.value)
+                putAll(setupFlowMetadata())
+            },
+        )
     }
 
-    override fun fireSyncSetupAbandoned(screenType: ScreenType) {
-        val params = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value)
-        pixel.fire(SyncPixelName.SYNC_SETUP_ENDED_ABANDONED, parameters = params)
+    override fun fireSyncSetupAbandoned(screenType: ScreenType, reason: CancellationReason?) {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_ENDED_ABANDONED,
+            parameters = buildMap {
+                put(SYNC_SETUP_SCREEN_TYPE, screenType.value)
+                if (reason != null) put(SYNC_SETUP_REASON, reason.value)
+                putAll(setupFlowMetadata())
+            },
+        )
     }
 
-    override fun fireSyncSetupFinishedSuccessfully(screenType: ScreenType) {
-        val params = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value)
-        pixel.fire(SyncPixelName.SYNC_SETUP_ENDED_SUCCESS, parameters = params)
+    override fun fireSyncSetupFinishedSuccessfully(
+        screenType: ScreenType,
+        path: SetupPath?,
+        myRole: SetupRole?,
+        peerKind: PeerKind?,
+    ) {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_ENDED_SUCCESS,
+            parameters = setupSuccessParams(screenType, path, myRole, peerKind),
+        )
+    }
+
+    override fun fireSyncSetupFailed(
+        screenType: ScreenType,
+        reason: SetupFailureReason,
+        path: SetupPath?,
+        myRole: SetupRole?,
+        peerKind: PeerKind?,
+        timeoutStage: TimeoutStage?,
+    ) {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_ENDED_FAILED,
+            parameters = buildMap {
+                put(SYNC_SETUP_SCREEN_TYPE, screenType.value)
+                put(SYNC_SETUP_REASON, reason.value)
+                if (path != null) put(SYNC_SETUP_PATH, path.value)
+                if (myRole != null) put(SYNC_SETUP_MY_ROLE, myRole.value)
+                if (peerKind != null) put(SYNC_SETUP_PEER_KIND, peerKind.value)
+                if (timeoutStage != null) put(SYNC_SETUP_TIMEOUT_STAGE, timeoutStage.value)
+                putAll(setupFlowMetadata())
+            },
+        )
     }
 
     override fun fireSyncSetupManualCodeScreenShown(screenType: ScreenType) {
-        val params = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value)
-        pixel.fire(SyncPixelName.SYNC_SETUP_MANUAL_CODE_ENTRY_SCREEN_SHOWN, parameters = params)
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_MANUAL_CODE_ENTRY_SCREEN_SHOWN,
+            parameters = buildMap {
+                put(SYNC_SETUP_SCREEN_TYPE, screenType.value)
+                putAll(setupFlowMetadata())
+            },
+        )
     }
 
-    override fun fireSyncSetupCodePastedParseSuccess(screenType: ScreenType) {
-        val params = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value)
-        pixel.fire(SyncPixelName.SYNC_SETUP_MANUAL_CODE_ENTERED_SUCCESS, parameters = params)
+    override fun fireSyncSetupCodePastedParseSuccess(screenType: ScreenType, codeVersion: CodeVersion, codeType: SyncCodeType?) {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_MANUAL_CODE_ENTERED_SUCCESS,
+            parameters = recognizedCodeParams(screenType, codeVersion, codeType),
+        )
     }
 
-    override fun fireSyncSetupCodePastedParseFailure(screenType: ScreenType) {
-        val params = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value)
-        pixel.fire(SyncPixelName.SYNC_SETUP_MANUAL_CODE_ENTERED_FAILED, parameters = params)
+    override fun fireSyncSetupCodePastedParseFailure(screenType: ScreenType, reason: SetupFailureReason?) {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_MANUAL_CODE_ENTERED_FAILED,
+            parameters = buildMap {
+                put(SYNC_SETUP_SCREEN_TYPE, screenType.value)
+                if (reason != null) put(SYNC_SETUP_REASON, reason.value)
+                putAll(setupFlowMetadata())
+            },
+        )
     }
 
     override fun fireSyncSetupCodeCopiedToClipboard(screenType: ScreenType) {
-        val params = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value)
-        pixel.fire(SyncPixelName.SYNC_SETUP_BARCODE_CODE_COPIED, parameters = params)
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_BARCODE_CODE_COPIED,
+            parameters = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value),
+        )
     }
 
-    override fun fireBarcodeScannerParseSuccess(screenType: ScreenType) {
-        val params = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value)
-        pixel.fire(SyncPixelName.SYNC_SETUP_BARCODE_SCANNER_SUCCESS, parameters = params)
+    override fun fireBarcodeScannerParseSuccess(screenType: ScreenType, codeVersion: CodeVersion, codeType: SyncCodeType?) {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_BARCODE_SCANNER_SUCCESS,
+            parameters = recognizedCodeParams(screenType, codeVersion, codeType),
+        )
     }
 
-    override fun fireBarcodeScannerParseError(screenType: ScreenType) {
-        val params = mapOf(SYNC_SETUP_SCREEN_TYPE to screenType.value)
-        pixel.fire(SyncPixelName.SYNC_SETUP_BARCODE_SCANNER_FAILED, parameters = params)
+    override fun fireBarcodeScannerParseError(screenType: ScreenType, reason: SetupFailureReason?) {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_BARCODE_SCANNER_FAILED,
+            parameters = buildMap {
+                put(SYNC_SETUP_SCREEN_TYPE, screenType.value)
+                if (reason != null) put(SYNC_SETUP_REASON, reason.value)
+                putAll(setupFlowMetadata())
+            },
+        )
+    }
+
+    override fun fireAiChatActive() {
+        pixel.fire(SyncPixelName.SYNC_AI_CHAT_ACTIVE, type = Pixel.PixelType.Daily())
+    }
+
+    override fun fireAiChatsRescopeTokenError(error: Error) {
+        // Skip 401 errors - let FE handle those
+        if (error.code == API_CODE.INVALID_LOGIN_CREDENTIALS.code) return
+
+        // Reuse existing daily error pixel logic for AI Chats
+        fireDailySyncApiErrorPixel(DeletableType.DUCK_AI_CHATS, error)
+    }
+
+    override fun fireAutoRestoreSetupToggleShown() {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_TOGGLE_SHOWN,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireAutoRestoreSetupToggleOptedOut() {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_TOGGLE_OPTED_OUT,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireAutoRestoreSettingsReadyShown(source: String) {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_SETTINGS_READY_SHOWN,
+            parameters = buildMap {
+                put(SyncPixelParameters.AUTO_RESTORE_SOURCE, source)
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireAutoRestoreSettingsRestoreTapped(source: String) {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_SETTINGS_RESTORE_TAPPED,
+            parameters = buildMap {
+                put(SyncPixelParameters.AUTO_RESTORE_SOURCE, source)
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireAutoRestoreSettingsSkipRestoreTapped(source: String) {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_SETTINGS_SKIP_RESTORE_TAPPED,
+            parameters = buildMap {
+                put(SyncPixelParameters.AUTO_RESTORE_SOURCE, source)
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireAutoRestoreSettingsCancelled(source: String) {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_SETTINGS_CANCELLED,
+            parameters = buildMap {
+                put(SyncPixelParameters.AUTO_RESTORE_SOURCE, source)
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireAutoRestoreSettingsManualRecoveryShown() {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_SETTINGS_MANUAL_RECOVERY_SHOWN,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireAutoRestoreSettingsPageShown() {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_SETTINGS_PAGE_SHOWN,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireAutoRestoreSettingsPageToggleEnabled() {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_SETTINGS_PAGE_TOGGLE_ENABLED,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireAutoRestoreSettingsPageToggleDisabled() {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_SETTINGS_PAGE_TOGGLE_DISABLED,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireAutoRestoreSuccess(source: String) {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_SUCCESS,
+            parameters = buildMap {
+                put(SyncPixelParameters.AUTO_RESTORE_SOURCE, source)
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireAutoRestoreFailure(source: String, errorCode: String, errorMessage: String) {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_FAILURE,
+            parameters = buildMap {
+                put(SyncPixelParameters.AUTO_RESTORE_SOURCE, source)
+                put(SyncPixelParameters.AUTO_RESTORE_ERROR_CODE, errorCode)
+                put(SyncPixelParameters.AUTO_RESTORE_ERROR_MESSAGE, errorMessage)
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireAutoRestorePreservedAccountCleared(source: String) {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_PRESERVED_ACCOUNT_CLEARED,
+            parameters = buildMap {
+                put(SyncPixelParameters.AUTO_RESTORE_SOURCE, source)
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireAutoRestorePreservedAccountClearFailed(source: String, errorCode: String, errorMessage: String) {
+        pixel.fire(
+            SyncPixelName.SYNC_AUTO_RESTORE_PRESERVED_ACCOUNT_CLEAR_FAILED,
+            parameters = buildMap {
+                put(SyncPixelParameters.AUTO_RESTORE_SOURCE, source)
+                put(SyncPixelParameters.AUTO_RESTORE_ERROR_CODE, errorCode)
+                put(SyncPixelParameters.AUTO_RESTORE_ERROR_MESSAGE, errorMessage)
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireSyncAnotherDevicePromptShown() {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_ANOTHER_DEVICE_PROMPT_SHOWN,
+            parameters = setupUiMetadata(),
+        )
+    }
+
+    override fun fireSyncAnotherDevicePromptOptionTapped(option: AnotherDevicePromptOption) {
+        pixel.fire(
+            SyncPixelName.SYNC_SETUP_ANOTHER_DEVICE_PROMPT_OPTION_TAPPED,
+            parameters = buildMap {
+                put(SyncPixelParameters.OPTION, option.value)
+                putAll(setupUiMetadata())
+            },
+        )
+    }
+
+    override fun fireUnifiedDeviceListPixel(event: UnifiedDeviceListPixel) {
+        val parameter = event.parameter
+        pixel.fire(
+            event.pixelName,
+            parameters = parameter?.let { mapOf(it.first to it.second) }.orEmpty(),
+            type = if (event.isDaily) {
+                Pixel.PixelType.Daily(tag = event.tag)
+            } else {
+                Pixel.PixelType.Count
+            },
+        )
     }
 
     companion object {
         private const val SYNC_PIXELS_PREF_FILE = "com.duckduckgo.sync.pixels.v1"
+        private const val FLOW_VERSION_V1 = "v1"
+        private const val FLOW_VERSION_V2 = "v2"
+        const val UI_VERSION_V1 = "v1"
+        const val UI_VERSION_V2 = "v2"
+        private const val MY_KIND_DDG = "ddg"
+        private const val CODE_TYPE_RECOVERY = "recovery"
+        private const val CODE_TYPE_LINKING = "linking"
     }
 }
 
@@ -398,6 +959,7 @@ enum class SyncAccountOperation {
     DELETE_ACCOUNT,
     USER_SIGNED_IN,
     CREATE_PDF,
+    RESCOPE_TOKEN,
 }
 
 // https://app.asana.com/0/72649045549333/1205649300615861
@@ -417,6 +979,7 @@ enum class SyncPixelName(override val pixelName: String) : Pixel.PixelName {
     SYNC_DELETE_ACCOUNT_FAILURE("m_delete_account_error"),
     SYNC_USER_SIGNED_IN_FAILURE("m_login_existing_account_error"),
     SYNC_CREATE_PDF_FAILURE("m_sync_create_recovery_pdf_error"),
+    SYNC_RESCOPE_TOKEN_FAILURE("m_sync_rescope_token_error"),
     SYNC_PATCH_COMPRESS_FAILED("m_sync_patch_compression_failed"),
     SYNC_TOO_MANY_REQUESTS_DAILY("m_sync_%s_too_many_requests_daily"),
     SYNC_OBJECT_LIMIT_EXCEEDED_DAILY("m_sync_%s_object_limit_exceeded_daily"),
@@ -441,6 +1004,11 @@ enum class SyncPixelName(override val pixelName: String) : Pixel.PixelName {
     SYNC_SETUP_DEEP_LINK_FLOW_SUCCESS("sync_setup_deep_link_flow_success"),
     SYNC_SETUP_DEEP_LINK_FLOW_ABANDONED("sync_setup_deep_link_flow_abandoned"),
 
+    SYNC_SETTINGS_SCREEN_SHOWN("m_settings_sync_open"),
+    SYNC_SETTINGS_BACK_UP_THIS_DEVICE_TAPPED("m_settings_sync_back_up_this_device_tapped"),
+    SYNC_SETTINGS_RECOVER_SYNC_DATA_TAPPED("m_settings_sync_recover_synced_data_tapped"),
+    SYNC_SETTINGS_RECOVER_SYNC_DATA_CONFIRMED("m_settings_sync_recovery_confirmed_tapped"),
+    SYNC_SETUP_SCAN_QR_SCREEN_SHOWN("sync_setup_scan_qr_screen_shown"),
     SYNC_SETUP_BARCODE_SCREEN_SHOWN("sync_setup_barcode_screen_shown"),
     SYNC_SETUP_BARCODE_SCANNER_SUCCESS("sync_setup_barcode_scanner_success"),
     SYNC_SETUP_BARCODE_SCANNER_FAILED("sync_setup_barcode_scanner_failed"),
@@ -450,8 +1018,49 @@ enum class SyncPixelName(override val pixelName: String) : Pixel.PixelName {
     SYNC_SETUP_MANUAL_CODE_ENTERED_FAILED("sync_setup_manual_code_entered_failed"),
     SYNC_SETUP_ENDED_ABANDONED("sync_setup_ended_abandoned"),
     SYNC_SETUP_ENDED_SUCCESS("sync_setup_ended_successful"),
+    SYNC_SETUP_ENDED_FAILED("sync_setup_ended_failed"),
     SYNC_USER_CONFIRMED_TO_TURN_OFF_SYNC("sync_disabled"),
     SYNC_USER_CONFIRMED_TO_TURN_OFF_SYNC_AND_DELETE("sync_disabledanddeleted"),
+    SYNC_SETUP_PROMO_BOOKMARK_ADDED_DIALOG_SHOWN("sync_setup_promo_bookmark_added_dialog_shown"),
+    SYNC_SETUP_PROMO_BOOKMARK_ADDED_DIALOG_DISMISSED("sync_setup_promo_bookmark_added_dialog_dismissed"),
+    SYNC_SETUP_PROMO_BOOKMARK_ADDED_DIALOG_CONFIRMED("sync_setup_promo_bookmark_added_dialog_confirmed"),
+    SYNC_SETUP_ANOTHER_DEVICE_PROMPT_SHOWN("m_settings_sync_another_device_prompt_shown"),
+    SYNC_SETUP_ANOTHER_DEVICE_PROMPT_OPTION_TAPPED("m_settings_sync_another_device_prompt_option_tapped"),
+    SYNC_AI_CHAT_ACTIVE("sync_ai_chat_active"),
+
+    SYNC_UNIFIED_DEVICES_OWN_ROW_RESOLVED_DEVICE_INFO("sync_unified_devices_own_row_resolved_device_info"),
+    SYNC_UNIFIED_DEVICES_OWN_ROW_RESOLVED_LEGACY("sync_unified_devices_own_row_resolved_legacy"),
+    SYNC_UNIFIED_DEVICES_OWN_ROW_RESOLVED_PLACEHOLDER("sync_unified_devices_own_row_resolved_placeholder"),
+    SYNC_UNIFIED_DEVICES_ACCOUNT_INFO_KEY_UNAVAILABLE("sync_unified_devices_account_info_key_unavailable"),
+    SYNC_UNIFIED_DEVICES_OTHER_ROW_DEVICE_INFO_FAILED_DECRYPTION("sync_unified_devices_other_row_device_info_failed_decryption"),
+    SYNC_UNIFIED_DEVICES_OTHER_ROW_RESOLVED_PLACEHOLDER("sync_unified_devices_other_row_resolved_placeholder"),
+    SYNC_UNIFIED_DEVICES_ACCOUNT_INFO_KEY_CREATE_SUCCESS("sync_unified_devices_account_info_key_create_success"),
+    SYNC_UNIFIED_DEVICES_ACCOUNT_INFO_KEY_CREATE_FAILED("sync_unified_devices_account_info_key_create_failed"),
+    SYNC_UNIFIED_DEVICES_ACCOUNT_INFO_KEY_WRAP_SUCCESS("sync_unified_devices_account_info_key_wrap_success"),
+    SYNC_UNIFIED_DEVICES_ACCOUNT_INFO_KEY_WRAP_FAILED("sync_unified_devices_account_info_key_wrap_failed"),
+    SYNC_UNIFIED_DEVICES_ACCOUNT_INFO_KEY_ADOPT_SUCCESS("sync_unified_devices_account_info_key_adopt_success"),
+    SYNC_UNIFIED_DEVICES_ACCOUNT_INFO_KEY_ADOPT_FAILED("sync_unified_devices_account_info_key_adopt_failed"),
+    SYNC_UNIFIED_DEVICES_OWN_ROW_DEVICE_INFO_FIRST_WRITE_SUCCESS("sync_unified_devices_own_row_device_info_first_write_success"),
+    SYNC_UNIFIED_DEVICES_OWN_ROW_DEVICE_INFO_FIRST_WRITE_FAILED("sync_unified_devices_own_row_device_info_first_write_failed"),
+    SYNC_UNIFIED_DEVICES_OWN_ROW_DEVICE_INFO_UPDATE_SUCCESS("sync_unified_devices_own_row_device_info_update_success"),
+    SYNC_UNIFIED_DEVICES_OWN_ROW_DEVICE_INFO_UPDATE_FAILED("sync_unified_devices_own_row_device_info_update_failed"),
+    SYNC_UNIFIED_DEVICES_OWN_ROW_DEVICE_INFO_REPAIR_SUCCESS("sync_unified_devices_own_row_device_info_repair_success"),
+    SYNC_UNIFIED_DEVICES_OWN_ROW_DEVICE_INFO_REPAIR_FAILED("sync_unified_devices_own_row_device_info_repair_failed"),
+
+    SYNC_AUTO_RESTORE_TOGGLE_SHOWN("sync-auto-restore_toggle_shown"),
+    SYNC_AUTO_RESTORE_TOGGLE_OPTED_OUT("sync-auto-restore_toggle_opted_out"),
+    SYNC_AUTO_RESTORE_SETTINGS_READY_SHOWN("sync-auto-restore_settings_ready_shown"),
+    SYNC_AUTO_RESTORE_SETTINGS_RESTORE_TAPPED("sync-auto-restore_settings_restore_tapped"),
+    SYNC_AUTO_RESTORE_SETTINGS_SKIP_RESTORE_TAPPED("sync-auto-restore_settings_skip_restore_tapped"),
+    SYNC_AUTO_RESTORE_SETTINGS_CANCELLED("sync-auto-restore_settings_cancelled"),
+    SYNC_AUTO_RESTORE_SETTINGS_MANUAL_RECOVERY_SHOWN("sync-auto-restore_settings_manual_recovery_shown"),
+    SYNC_AUTO_RESTORE_SETTINGS_PAGE_SHOWN("sync-auto-restore_settings_page_shown"),
+    SYNC_AUTO_RESTORE_SETTINGS_PAGE_TOGGLE_ENABLED("sync-auto-restore_settings_page_toggle_enabled"),
+    SYNC_AUTO_RESTORE_SETTINGS_PAGE_TOGGLE_DISABLED("sync-auto-restore_settings_page_toggle_disabled"),
+    SYNC_AUTO_RESTORE_SUCCESS("sync-auto-restore_success"),
+    SYNC_AUTO_RESTORE_FAILURE("sync-auto-restore_failure"),
+    SYNC_AUTO_RESTORE_PRESERVED_ACCOUNT_CLEARED("sync-auto-restore_preserved_account_cleared"),
+    SYNC_AUTO_RESTORE_PRESERVED_ACCOUNT_CLEAR_FAILED("sync-auto-restore_preserved_account_clear_failed"),
 }
 
 object SyncPixelParameters {
@@ -470,10 +1079,31 @@ object SyncPixelParameters {
     const val ERROR_CODE = "code"
     const val ERROR_REASON = "reason"
     const val ERROR = "error"
+    const val OPTION = "option"
     const val SYNC_FEATURE_PROMOTION_SOURCE = "source"
+    const val SYNC_FEATURE_PROMOTION_DISMISS_REASON = "reason"
     const val GET_OTHER_DEVICES_SCREEN_LAUNCH_SOURCE = "source"
     const val SYNC_SETUP_SCREEN_TYPE = "source"
+    const val SYNC_SETUP_FLOW_VERSION = "flow_version"
+    const val SYNC_SETUP_UI_VERSION = "ui_version"
+    const val SYNC_SETUP_MY_KIND = "my_kind"
+    const val SYNC_SETUP_CODE_VERSION = "code_version"
+    const val SYNC_SETUP_CODE_TYPE = "code_type"
+    const val SYNC_SETUP_PATH = "path"
+    const val SYNC_SETUP_MY_ROLE = "my_role"
+    const val SYNC_SETUP_PEER_KIND = "peer_kind"
+    const val SYNC_SETUP_REASON = "reason"
+    const val SYNC_SETUP_TIMEOUT_STAGE = "timeout_stage"
     const val CONNECTED_DEVICES_WHEN_DELETING = "connected_devices"
+
+    const val AUTO_RESTORE_SOURCE = "source"
+    const val AUTO_RESTORE_ERROR_CODE = "errorCode"
+    const val AUTO_RESTORE_ERROR_MESSAGE = "errorMessage"
+    const val AUTO_RESTORE_SOURCE_PAIRING = "sync_pairing"
+    const val AUTO_RESTORE_SOURCE_BACKUP = "sync_backup"
+    const val AUTO_RESTORE_SOURCE_RECOVER = "sync_recover"
+    const val AUTO_RESTORE_SOURCE_ONBOARDING = "onboarding"
+    const val AUTO_RESTORE_SOURCE_SETTINGS = "settings"
 }
 
 @ContributesMultibinding(
@@ -485,6 +1115,83 @@ object SyncPixelsRequiringDataCleaning : PixelParamRemovalPlugin {
         return listOf(
             SyncPixelName.SYNC_USER_CONFIRMED_TO_TURN_OFF_SYNC.pixelName to removeAtb(),
             SyncPixelName.SYNC_USER_CONFIRMED_TO_TURN_OFF_SYNC_AND_DELETE.pixelName to removeAtb(),
+            SyncPixelName.SYNC_SETUP_PROMO_BOOKMARK_ADDED_DIALOG_SHOWN.pixelName to removeAtb(),
+            SyncPixelName.SYNC_SETUP_PROMO_BOOKMARK_ADDED_DIALOG_DISMISSED.pixelName to removeAtb(),
+            SyncPixelName.SYNC_SETUP_PROMO_BOOKMARK_ADDED_DIALOG_CONFIRMED.pixelName to removeAtb(),
+            SyncPixelName.SYNC_RESCOPE_TOKEN_FAILURE.pixelName to removeAtb(),
+            SyncPixelName.SYNC_AI_CHAT_ACTIVE.pixelName to removeAtb(),
         )
+    }
+}
+
+internal fun Int.toSetupFailureReason(): SetupFailureReason = when (this) {
+    AccountErrorCodes.SESSION_TIMEOUT.code -> SetupFailureReason.SESSION_TIMEOUT
+    AccountErrorCodes.THIRD_PARTY_ALREADY_UPGRADED.code -> SetupFailureReason.ALREADY_UPGRADED
+    AccountErrorCodes.ALREADY_PAIRED.code -> SetupFailureReason.ALREADY_PAIRED
+    AccountErrorCodes.LOGIN_FAILED.code,
+    AccountErrorCodes.INVALID_CODE.code,
+    AccountErrorCodes.EXCHANGE_FAILED.code,
+    -> SetupFailureReason.INVALID_CREDENTIALS
+    AccountErrorCodes.CREATE_ACCOUNT_FAILED.code -> SetupFailureReason.ACCOUNT_CREATION_FAILED
+    AccountErrorCodes.ACCOUNT_UPGRADE_FAILED.code -> SetupFailureReason.ACCOUNT_UPGRADE_FAILED
+    AccountErrorCodes.RECOVERY_CODE_PREPARATION_FAILED.code -> SetupFailureReason.RECOVERY_CODE_PREPARATION_FAILED
+    AccountErrorCodes.MISSING_3PARTY_CREDENTIAL.code -> SetupFailureReason.MISSING_3PARTY_CREDENTIAL
+    AccountErrorCodes.UNDECRYPTABLE_3PARTY_CREDENTIAL.code -> SetupFailureReason.UNDECRYPTABLE_3PARTY_CREDENTIAL
+    AccountErrorCodes.ACCOUNT_EXTEND_FAILED.code -> SetupFailureReason.ACCOUNT_EXTEND_FAILED
+    AccountErrorCodes.MISSING_3PARTY_KEY.code -> SetupFailureReason.MISSING_3PARTY_KEY
+    AccountErrorCodes.LOCAL_STORAGE_FAILED.code -> SetupFailureReason.LOCAL_STORAGE_FAILED
+    AccountErrorCodes.PEER_RECOVERY_CODE_UNAVAILABLE.code -> SetupFailureReason.PEER_RECOVERY_CODE_UNAVAILABLE
+    AccountErrorCodes.UNEXPECTED_SECOND_HELLO.code -> SetupFailureReason.UNEXPECTED_SECOND_HELLO
+    AccountErrorCodes.UNEXPECTED_EVENT.code -> SetupFailureReason.UNEXPECTED_EVENT
+    AccountErrorCodes.PAIRING_SESSION_NOT_READY.code -> SetupFailureReason.PAIRING_SESSION_NOT_READY
+    AccountErrorCodes.RELAY_CHANNEL_UNAVAILABLE.code -> SetupFailureReason.RELAY_CHANNEL_UNAVAILABLE
+    AccountErrorCodes.PAIRING_UNAVAILABLE.code,
+    AccountErrorCodes.NEGOTIATION_ABORTED.code,
+    AccountErrorCodes.NO_RECOVERY_CODE.code,
+    -> SetupFailureReason.PROTOCOL_ERROR
+    AccountErrorCodes.PAIRING_FAILED.code -> SetupFailureReason.TRANSPORT_FAILURE
+    else -> SetupFailureReason.UNEXPECTED_FAILURE
+}
+
+/**
+ * Fire the "Setup failed" pixel for a v2 error [outcome]. No-op for non-error outcomes. User
+ * cancellations (`PAIRING_CANCELLED`, `PAIRING_REJECTED`) are intentionally skipped — they are not
+ * setup errors (the latter pending the cancellation-telemetry follow-up).
+ */
+
+internal fun SyncPixels.fireSetupFailed(screenType: ScreenType, outcome: DispatchOutcome) {
+    when (outcome) {
+        is DispatchOutcome.UpgradeRequired ->
+            fireSyncSetupFailed(screenType, SetupFailureReason.NEEDS_UPGRADE, outcome.path, outcome.myRole, outcome.peerKind)
+        is DispatchOutcome.AlreadyConnected ->
+            // v2 same-account case: both devices exchanged intros and discovered a matching user_id.
+            // Per spec, we report a failed pixel with reason=already_paired even though the user-facing
+            // outcome is a benign "Connected" — the flow did not produce a new pairing.
+            fireSyncSetupFailed(screenType, SetupFailureReason.ALREADY_PAIRED, path = SetupPath.PAIRING)
+        is DispatchOutcome.Failed -> {
+            if (outcome.code == AccountErrorCodes.PAIRING_CANCELLED.code || outcome.code == AccountErrorCodes.PAIRING_REJECTED.code) {
+                return
+            }
+            fireSyncSetupFailed(
+                screenType,
+                outcome.code.toSetupFailureReason(),
+                outcome.path,
+                outcome.myRole,
+                outcome.peerKind,
+                timeoutStage = outcome.timeoutStage,
+            )
+        }
+        else -> {}
+    }
+}
+
+// Both devices fire the "abandoned" pixel on a v2 confirmation denial — from each device's POV the
+// setup ended via denial. PAIRING_CANCELLED is this device's own denial; PAIRING_REJECTED is the peer's
+// denial received on the wire.
+internal fun SyncPixels.fireSetupCancelledIfDenied(screenType: ScreenType, outcome: DispatchOutcome) {
+    if (outcome is DispatchOutcome.Failed &&
+        (outcome.code == AccountErrorCodes.PAIRING_CANCELLED.code || outcome.code == AccountErrorCodes.PAIRING_REJECTED.code)
+    ) {
+        fireSyncSetupAbandoned(screenType, CancellationReason.CONFIRMATION_DENIED)
     }
 }

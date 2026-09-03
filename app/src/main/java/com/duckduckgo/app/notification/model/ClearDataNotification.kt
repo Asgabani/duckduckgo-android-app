@@ -16,18 +16,16 @@
 
 package com.duckduckgo.app.notification.model
 
-import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import com.duckduckgo.app.browser.R
 import com.duckduckgo.app.di.AppCoroutineScope
-import com.duckduckgo.app.firebutton.FireButtonActivity
+import com.duckduckgo.app.fire.AutomaticDataClearing
+import com.duckduckgo.app.firebutton.DataClearingSettingsActivity
 import com.duckduckgo.app.notification.NotificationRegistrar
-import com.duckduckgo.app.notification.TaskStackBuilderFactory
 import com.duckduckgo.app.notification.db.NotificationDao
 import com.duckduckgo.app.pixels.AppPixelName
-import com.duckduckgo.app.settings.clear.ClearWhatOption
-import com.duckduckgo.app.settings.db.SettingsDataStore
 import com.duckduckgo.app.statistics.pixels.Pixel
 import com.duckduckgo.common.ui.view.getColorFromAttr
 import com.duckduckgo.common.utils.DispatcherProvider
@@ -36,6 +34,7 @@ import com.squareup.anvil.annotations.ContributesMultibinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import logcat.LogPriority.VERBOSE
 import logcat.logcat
 import javax.inject.Inject
@@ -43,7 +42,8 @@ import javax.inject.Inject
 class ClearDataNotification(
     private val context: Context,
     private val notificationDao: NotificationDao,
-    private val settingsDataStore: SettingsDataStore,
+    private val automaticDataClearing: AutomaticDataClearing,
+    private val dispatcherProvider: DispatcherProvider,
 ) : SchedulableNotification {
 
     override val id = "com.duckduckgo.privacytips.autoclear"
@@ -54,12 +54,13 @@ class ClearDataNotification(
             return false
         }
 
-        if (settingsDataStore.automaticallyClearWhatOption != ClearWhatOption.CLEAR_NONE) {
-            logcat(VERBOSE) { "No need for notification, user already has clear option set" }
-            return false
+        return withContext(dispatcherProvider.io()) {
+            if (automaticDataClearing.isAutomaticDataClearingOptionSelected()) {
+                logcat(VERBOSE) { "No need for notification, user already has automatic data clearing option set" }
+                return@withContext false
+            }
+            return@withContext true
         }
-
-        return true
     }
 
     override suspend fun buildSpecification(): NotificationSpec {
@@ -86,7 +87,6 @@ class ClearDataSpecification(context: Context) : NotificationSpec {
 class ClearDataNotificationPlugin @Inject constructor(
     private val context: Context,
     private val schedulableNotification: ClearDataNotification,
-    private val taskStackBuilderFactory: TaskStackBuilderFactory,
     private val pixel: Pixel,
     @AppCoroutineScope private val coroutineScope: CoroutineScope,
     private val dispatcherProvider: DispatcherProvider,
@@ -113,15 +113,10 @@ class ClearDataNotificationPlugin @Inject constructor(
         }
     }
 
-    override fun getLaunchIntent(): PendingIntent? {
-        val intent = FireButtonActivity.intent(context).apply {
-            putExtra(FireButtonActivity.LAUNCH_FROM_NOTIFICATION_PIXEL_NAME, pixelName(AppPixelName.NOTIFICATION_LAUNCHED.pixelName))
+    override suspend fun getLaunchIntent(): Intent {
+        return DataClearingSettingsActivity.intent(context).apply {
+            putExtra(DataClearingSettingsActivity.LAUNCH_FROM_NOTIFICATION_PIXEL_NAME, pixelName(AppPixelName.NOTIFICATION_LAUNCHED.pixelName))
         }
-        val pendingIntent: PendingIntent? = taskStackBuilderFactory.createTaskBuilder().run {
-            addNextIntentWithParentStack(intent)
-            getPendingIntent(0, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        }
-        return pendingIntent
     }
 
     private fun pixelName(notificationType: String) = "${notificationType}_${getSpecification().pixelSuffix}"

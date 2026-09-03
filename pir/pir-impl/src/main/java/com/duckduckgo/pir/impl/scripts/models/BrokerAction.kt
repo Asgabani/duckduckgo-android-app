@@ -64,12 +64,14 @@ sealed class BrokerAction(
         override val id: String,
         val selector: String,
         val captchaType: String? = null,
+        val parent: ParentElement? = null,
     ) : BrokerAction(id)
 
     data class SolveCaptcha(
         override val id: String,
         val selector: String,
         val captchaType: String? = null,
+        val parent: ParentElement? = null,
     ) : BrokerAction(id)
 
     data class Click(
@@ -115,32 +117,24 @@ sealed class BrokerAction(
         val expectations: List<ExpectationSelector>,
         val actions: List<BrokerAction>,
     ) : BrokerAction(id)
+
+    data class GenerateEmail(
+        override val id: String,
+    ) : BrokerAction(id)
+
+    data class GetEmailData(
+        override val id: String,
+        val pollingTime: String,
+        val extract: List<String>,
+    ) : BrokerAction(id)
 }
 
-data class ExtractProfileSelectors(
-    val name: ProfileSelector?,
-    val alternativeNamesList: ProfileSelector?,
-    val age: ProfileSelector?,
-    val addressFull: ProfileSelector?,
-    val addressFullList: ProfileSelector?,
-    val addressCityState: ProfileSelector?,
-    val addressCityStateList: ProfileSelector?,
-    val phone: ProfileSelector?,
-    val phoneList: ProfileSelector?,
-    val relativesList: ProfileSelector?,
-    val profileUrl: ProfileSelector?,
-    val reportedId: ProfileSelector?,
-)
-
-data class ProfileSelector(
-    val selector: String?,
-    val findElements: Boolean?,
-    val beforeText: String?,
-    val afterText: String?,
-    val separator: String?,
-    val identifierType: String?,
-    val identifier: String?,
-)
+/**
+ * The `profile` block of an extract action, forwarded to C-S-S untouched. Modelling its shape would drop
+ * whatever a broker config uses that we haven't declared, and C-S-S scrapes fields we don't recognise
+ * into the extracted profile's `extras`.
+ */
+typealias ExtractProfileSelectors = Map<String, Any?>
 
 data class ElementSelector(
     val type: String,
@@ -150,6 +144,7 @@ data class ElementSelector(
     val min: String?,
     val max: String?,
     val failSilently: Boolean?,
+    val format: String? = null,
 )
 
 data class ParentElement(
@@ -169,6 +164,14 @@ enum class DataSource {
     // Uses the profile scraped via the extract action
     @Json(name = "extractedProfile")
     EXTRACTED_PROFILE,
+
+    // Uses the email address generated via the generateEmail action
+    @Json(name = "fetchedEmail")
+    FETCHED_EMAIL,
+
+    // Uses the data extracted from an email (e.g. verification code) via the getEmailData action
+    @Json(name = "emailData")
+    EMAIL_DATA,
 }
 
 fun BrokerAction.asActionType(): String {
@@ -182,5 +185,7 @@ fun BrokerAction.asActionType(): String {
         is SolveCaptcha -> "solveCaptcha"
         is EmailConfirmation -> "emailConfirmation"
         is Condition -> "condition"
+        is BrokerAction.GenerateEmail -> "generateEmail"
+        is BrokerAction.GetEmailData -> "getEmailData"
     }
 }

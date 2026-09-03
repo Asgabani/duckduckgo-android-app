@@ -19,6 +19,7 @@ package com.duckduckgo.app.browser.omnibar.animations.addressbar
 import android.animation.Animator
 import android.animation.AnimatorSet
 import android.content.Context
+import android.graphics.Color
 import android.transition.Scene
 import android.transition.Slide
 import android.transition.Transition
@@ -27,19 +28,29 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import androidx.core.animation.addListener
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.core.transition.addListener
+import androidx.core.view.updateLayoutParams
 import com.airbnb.lottie.LottieAnimationView
+import com.airbnb.lottie.RenderMode
 import com.duckduckgo.app.browser.R
 import com.duckduckgo.app.trackerdetection.model.Entity
+import com.duckduckgo.common.ui.DuckDuckGoActivity
+import com.duckduckgo.common.ui.store.AppBrandDesignUpdateToggles
 import com.duckduckgo.common.ui.view.gone
 import com.duckduckgo.common.ui.view.show
 import com.duckduckgo.common.ui.view.text.DaxTextView
+import com.duckduckgo.common.ui.view.toPx
 import javax.inject.Inject
+import com.duckduckgo.mobile.android.R as CommonR
 
 class AddressBarTrackersAnimator @Inject constructor(
     private val trackerCountAnimator: TrackerCountAnimator,
     private val commonAddressBarAnimationHelper: CommonAddressBarAnimationHelper,
+    private val appBrandDesignUpdateToggles: AppBrandDesignUpdateToggles,
 ) {
     var isAnimationRunning = false
         private set
@@ -49,6 +60,7 @@ class AddressBarTrackersAnimator @Inject constructor(
     private var animatedIconBackgroundView: View? = null
     private var addressBarTrackersBlockedAnimationShieldIcon: LottieAnimationView? = null
     private var onAnimationComplete: (() -> Unit)? = null
+    private var customBackgroundColor: Int? = null
 
     fun startAnimation(
         context: Context,
@@ -58,6 +70,8 @@ class AddressBarTrackersAnimator @Inject constructor(
         omnibarViews: List<View>,
         shieldViews: List<View>,
         entities: List<Entity>?,
+        customBackgroundColor: Int?,
+        useSoftwareRenderingMode: Boolean,
         onAnimationComplete: () -> Unit,
     ) {
         if (isAnimationRunning) return
@@ -73,14 +87,34 @@ class AddressBarTrackersAnimator @Inject constructor(
         this.animatedIconBackgroundView = animatedIconBackgroundView
         this.addressBarTrackersBlockedAnimationShieldIcon = addressBarTrackersBlockedAnimationShieldIcon
         this.onAnimationComplete = onAnimationComplete
+        this.customBackgroundColor = customBackgroundColor
 
+        val addressBarRebrandEnabled = appBrandDesignUpdateToggles.addressBar().isEnabled()
+        val sceneContext = addressBarAnimationContext(sceneRoot.context, addressBarRebrandEnabled)
+        animatedIconBackgroundView.background = ContextCompat.getDrawable(sceneContext, CommonR.drawable.animated_icon_dummy_background)
+
+        addressBarTrackersBlockedAnimationShieldIcon.renderMode = if (useSoftwareRenderingMode) {
+            RenderMode.SOFTWARE
+        } else {
+            RenderMode.AUTOMATIC
+        }
+        if (addressBarRebrandEnabled) {
+            val boxSize = addressBarTrackersBlockedAnimationShieldIcon.resources.getDimensionPixelSize(CommonR.dimen.toolbarIcon)
+            addressBarTrackersBlockedAnimationShieldIcon.setAnimation(R.raw.shield_color_24)
+            addressBarTrackersBlockedAnimationShieldIcon.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                width = boxSize
+                height = boxSize
+                marginStart = 2.toPx(context)
+            }
+            addressBarTrackersBlockedAnimationShieldIcon.scaleType = ImageView.ScaleType.FIT_CENTER
+        }
         addressBarTrackersBlockedAnimationShieldIcon.show()
         addressBarTrackersBlockedAnimationShieldIcon.progress = 0F
 
         val slideInTrackersTransition: Transition = createSlideTransition()
         val slideOutTrackersTransition: Transition = createSlideTransition()
 
-        val inflater = LayoutInflater.from(context)
+        val inflater = LayoutInflater.from(sceneContext)
         val scene1Layout = inflater.inflate(R.layout.address_bar_trackers_animation_scene_1, sceneRoot, false)
         val scene2Layout = inflater.inflate(R.layout.address_bar_trackers_animation_scene_2, sceneRoot, false)
 
@@ -100,6 +134,24 @@ class AddressBarTrackersAnimator @Inject constructor(
         val trackerAnimationStartCountText = trackerCountAnimator.getTrackerAnimationStartCount(entities.size).toString()
         trackersBlockedCountTextViewScene1.text = trackerAnimationStartCountText
         trackersBlockedCountTextViewScene2.text = trackerAnimationStartCountText
+
+        // Apply custom background color if provided
+        customBackgroundColor?.let { bgColor ->
+            applyCustomBackground(animatedIconBackgroundView, bgColor)
+            applyCustomBackground(scene1Layout, bgColor)
+            applyCustomBackground(scene2Layout, bgColor)
+
+            // Set text color based on background color if useLightAnimation is specified
+            val textColor = if (context.isColorLight(bgColor)) {
+                Color.BLACK
+            } else {
+                Color.WHITE
+            }
+            trackersBlockedTextViewScene1.setTextColor(textColor)
+            trackersBlockedCountTextViewScene1.setTextColor(textColor)
+            trackersBlockedTextViewScene2.setTextColor(textColor)
+            trackersBlockedCountTextViewScene2.setTextColor(textColor)
+        }
 
         val scene1 = Scene(sceneRoot, scene1Layout)
         val scene2 = Scene(sceneRoot, scene2Layout)
@@ -241,12 +293,38 @@ class AddressBarTrackersAnimator @Inject constructor(
         animatedIconBackgroundView = null
         addressBarTrackersBlockedAnimationShieldIcon = null
         onAnimationComplete = null
+        customBackgroundColor = null
     }
 
     private fun createSlideTransition(): Transition {
         val slideInTrackersTransition: Transition = Slide(Gravity.START)
         slideInTrackersTransition.duration = ANIMATION_DURATION
         return slideInTrackersTransition
+    }
+
+    private fun applyCustomBackground(layout: View, backgroundColor: Int) {
+        // Mutate the existing background drawable to preserve animation compatibility
+        val background = layout.background
+        if (background is android.graphics.drawable.GradientDrawable) {
+            val mutatedDrawable = background.mutate() as android.graphics.drawable.GradientDrawable
+            mutatedDrawable.setColor(backgroundColor)
+            mutatedDrawable.setStroke(1, backgroundColor)
+        }
+    }
+
+    private fun Context.isColorLight(color: Int): Boolean {
+        if (color == 0) {
+            return !(this as DuckDuckGoActivity).isDarkThemeEnabled()
+        }
+
+        if (color == Color.WHITE || Color.alpha(color) < 128) {
+            return true
+        }
+
+        // Use W3C relative luminance calculation
+        val luminance = ColorUtils.calculateLuminance(color)
+        // Use 0.5 threshold - lighter backgrounds have higher luminance
+        return luminance > 0.5
     }
 
     companion object {

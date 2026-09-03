@@ -21,6 +21,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
+import android.content.res.Resources
+import android.util.TypedValue
 import androidx.appcompat.app.AppCompatActivity
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.duckduckgo.common.ui.DuckDuckGoTheme.DARK
@@ -50,34 +52,48 @@ object Theming {
         val FIXED_THEME_ACTIVITIES = listOf(
             "com.duckduckgo.sync.impl.ui.SyncLoginActivity",
             "com.duckduckgo.sync.impl.ui.SyncConnectActivity",
-            "com.duckduckgo.sync.impl.ui.ShowQRCodeActivity",
             "com.duckduckgo.sync.impl.ui.EnterCodeActivity",
             "com.duckduckgo.sync.impl.ui.SyncWithAnotherDeviceActivity",
             "com.duckduckgo.autofill.impl.service.AutofillProviderFillSuggestionActivity",
+            "com.duckduckgo.sync.impl.ui.v2.ReadSyncCodeActivity",
+            "com.duckduckgo.sync.impl.ui.v2.DisplayQrCodeActivity",
         )
     }
 }
 
-fun AppCompatActivity.applyTheme(theme: DuckDuckGoTheme): BroadcastReceiver? {
+fun AppCompatActivity.applyTheme(
+    theme: DuckDuckGoTheme,
+    isFireMode: Boolean = false,
+    applyBrandDesignUpdate: Boolean = false,
+): BroadcastReceiver? {
     if (!FIXED_THEME_ACTIVITIES.contains(this.localClassName)) {
-        setTheme(getThemeId(theme))
+        setTheme(getThemeId(theme, isFireMode))
+    }
+    if (applyBrandDesignUpdate && this.theme.supportsRebrandOverlay()) {
+        this.theme.applyStyle(R.style.ThemeOverlay_Rebrand, true)
     }
     return registerForThemeChangeBroadcast()
 }
 
-fun AppCompatActivity.getThemeId(theme: DuckDuckGoTheme): Int {
+internal fun Resources.Theme.supportsRebrandOverlay(): Boolean =
+    resolveAttribute(R.attr.daxColorRebrandButtonPrimaryContainer, TypedValue(), true)
+
+fun AppCompatActivity.getThemeId(
+    theme: DuckDuckGoTheme,
+    isFireMode: Boolean = false,
+): Int {
     return when (theme) {
-        SYSTEM_DEFAULT -> getSystemDefaultTheme()
-        DARK -> R.style.Theme_DuckDuckGo_Dark
-        else -> R.style.Theme_DuckDuckGo_Light
+        SYSTEM_DEFAULT -> getSystemDefaultTheme(isFireMode)
+        DARK -> if (isFireMode) R.style.Theme_DuckDuckGo_Dark_Fire else R.style.Theme_DuckDuckGo_Dark
+        else -> if (isFireMode) R.style.Theme_DuckDuckGo_Light_Fire else R.style.Theme_DuckDuckGo_Light
     }
 }
 
-private fun Context.getSystemDefaultTheme(): Int {
+private fun Context.getSystemDefaultTheme(isFireMode: Boolean): Int {
     return if (isInNightMode()) {
-        R.style.Theme_DuckDuckGo_Dark
+        if (isFireMode) R.style.Theme_DuckDuckGo_Dark_Fire else R.style.Theme_DuckDuckGo_Dark
     } else {
-        R.style.Theme_DuckDuckGo_Light
+        if (isFireMode) R.style.Theme_DuckDuckGo_Light_Fire else R.style.Theme_DuckDuckGo_Light
     }
 }
 

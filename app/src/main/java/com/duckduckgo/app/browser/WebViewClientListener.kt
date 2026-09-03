@@ -39,6 +39,13 @@ interface WebViewClientListener {
 
     fun pageRefreshed(refreshedUrl: String)
 
+    /**
+     * Called synchronously when a main-frame load starts, with the id identifying that load for
+     * [com.duckduckgo.app.browser.pageload.PageLoadWideEvent]. A redirect hop starts a load of its own, so this fires
+     * more than once per navigation. Progress reported from here until the next call belongs to [navigationId].
+     */
+    fun onMainFrameLoadStarted(navigationId: Long)
+
     fun progressChanged(
         newProgress: Int,
         webViewNavigationState: WebViewNavigationState,
@@ -81,6 +88,7 @@ interface WebViewClientListener {
     fun handleAppLink(
         appLink: SpecialUrlDetector.UrlType.AppLink,
         isForMainFrame: Boolean,
+        hasGesture: Boolean,
     ): Boolean
 
     fun handleNonHttpAppLink(nonHttpAppLink: SpecialUrlDetector.UrlType.NonHttpAppLink): Boolean
@@ -93,6 +101,13 @@ interface WebViewClientListener {
 
     fun openLinkInNewTab(uri: Uri)
 
+    /**
+     * Called for a main-frame duck.ai navigation. When the page is shown inside a custom tab, the
+     * implementation opens the Duck Chat experience, closes the custom tab, and returns `true` so
+     * the navigation is not loaded in the custom tab. Returns `false` otherwise (let navigation proceed).
+     */
+    fun handleDuckChatUrlInCustomTab(uri: Uri): Boolean
+
     fun recoverFromRenderProcessGone()
 
     fun requiresAuthentication(request: BasicAuthenticationRequest)
@@ -101,11 +116,13 @@ interface WebViewClientListener {
 
     fun closeAndSelectSourceTab()
 
+    fun closeAndReturnToSourceIfBlankTab()
+
     fun upgradedToHttps()
 
     fun surrogateDetected(surrogate: SurrogateResponse)
 
-    fun isDesktopSiteEnabled(): Boolean
+    suspend fun isDesktopSiteEnabled(url: String): Boolean
 
     fun isTabInForeground(): Boolean
 
@@ -132,6 +149,7 @@ interface WebViewClientListener {
     fun onReceivedError(
         errorType: WebViewErrorResponse,
         url: String,
+        errorCode: String,
     )
 
     fun onReceivedMaliciousSiteWarning(
@@ -156,6 +174,8 @@ interface WebViewClientListener {
         statusCode: Int,
         url: String,
     )
+
+    fun onSiteVisited(url: String, title: String?)
 
     fun getCurrentTabId(): String
 
@@ -183,4 +203,7 @@ interface WebViewClientListener {
         webViewNavigationState: WebViewNavigationState,
         activeExperiments: List<Toggle>,
     )
+
+    /** Called when the URL changes via history.replaceState / history.pushState (no page reload). */
+    fun onHistoryUrlChanged(url: String) {}
 }

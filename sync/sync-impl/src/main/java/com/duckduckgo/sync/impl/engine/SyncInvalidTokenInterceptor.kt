@@ -51,7 +51,12 @@ class SyncInvalidTokenInterceptor @Inject constructor(
         val response = chain.proceed(chain.request())
 
         val method = chain.request().method
-        if (response.code == API_CODE.INVALID_LOGIN_CREDENTIALS.code && (method == "PATCH" || method == "GET")) {
+        val path = chain.request().url.encodedPath
+        if (
+            response.code == API_CODE.INVALID_LOGIN_CREDENTIALS.code &&
+            method in METHODS_TRIGGERING_LOGGED_OUT_NOTIFICATION &&
+            !path.startsWith(SyncService.EXCHANGE_CHANNEL_PATH_PREFIX)
+        ) {
             logcat { "Sync-Engine: User logged out, invalid token detected." }
             notificationManager.checkPermissionAndNotify(
                 context,
@@ -66,5 +71,6 @@ class SyncInvalidTokenInterceptor @Inject constructor(
 
     companion object {
         internal const val SYNC_USER_LOGGED_OUT_NOTIFICATION_ID = 8451
+        private val METHODS_TRIGGERING_LOGGED_OUT_NOTIFICATION = listOf("GET", "PATCH", "DELETE", "POST")
     }
 }

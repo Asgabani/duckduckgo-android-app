@@ -20,15 +20,22 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Message
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.net.toUri
+import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.di.scopes.AppScope
 import com.duckduckgo.pir.impl.common.PirJobConstants.DBP_INITIAL_URL
+import com.duckduckgo.user.agent.api.UserAgentProvider
 import com.squareup.anvil.annotations.ContributesBinding
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import logcat.logcat
 import javax.inject.Inject
 
@@ -40,12 +47,15 @@ interface PirDetachedWebViewProvider {
      * @param context in which the webview should run - could be service/activity
      * @param scriptToLoad the JS script that is needed for PIR to run.
      * @param onPageLoaded callback to receive whenever a url has finished loading.
+     * @param onPageLoadFailed callback to receive whenever a url has failed to load.
+     * @param onRendererGone callback to receive whenever the WebView's renderer process has died.
      */
     fun createInstance(
         context: Context,
         scriptToLoad: String,
         onPageLoaded: (String?) -> Unit,
         onPageLoadFailed: (String?) -> Unit,
+        onRendererGone: (didCrash: Boolean) -> Unit,
     ): WebView
 
     /**
@@ -54,17 +64,24 @@ interface PirDetachedWebViewProvider {
      * @param webView in which PIR should run
      * @param scriptToLoad the JS script that is needed for PIR to run.
      * @param onPageLoaded callback to receive whenever a url has finished loading.
+     * @param onPageLoadFailed callback to receive whenever a url has failed to load.
+     * @param onRendererGone callback to receive whenever the WebView's renderer process has died.
      */
     fun setupWebView(
         webView: WebView,
         scriptToLoad: String,
         onPageLoaded: (String?) -> Unit,
         onPageLoadFailed: (String?) -> Unit,
+        onRendererGone: (didCrash: Boolean) -> Unit,
     ): WebView
 }
 
 @ContributesBinding(AppScope::class)
-class RealPirDetachedWebViewProvider @Inject constructor() :
+class RealPirDetachedWebViewProvider @Inject constructor(
+    private val userAgentProvider: UserAgentProvider,
+    private val pirRequestInterceptor: PirRequestInterceptor,
+    private val dispatcherProvider: DispatcherProvider,
+) :
     PirDetachedWebViewProvider {
     @SuppressLint("SetJavaScriptEnabled")
     override fun createInstance(
@@ -72,15 +89,18 @@ class RealPirDetachedWebViewProvider @Inject constructor() :
         scriptToLoad: String,
         onPageLoaded: (String?) -> Unit,
         onPageLoadFailed: (String?) -> Unit,
+        onRendererGone: (didCrash: Boolean) -> Unit,
     ): WebView {
-        return setupWebView(WebView(context), scriptToLoad, onPageLoaded, onPageLoadFailed)
+        return setupWebView(WebView(context), scriptToLoad, onPageLoaded, onPageLoadFailed, onRendererGone)
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
     override fun setupWebView(
         webView: WebView,
         scriptToLoad: String,
         onPageLoaded: (String?) -> Unit,
         onPageLoadFailed: (String?) -> Unit,
+        onRendererGone: (didCrash: Boolean) -> Unit,
     ): WebView {
         return webView.apply {
             webChromeClient = object : WebChromeClient() {
@@ -99,6 +119,17 @@ class RealPirDetachedWebViewProvider @Inject constructor() :
             webViewClient = object : WebViewClient() {
                 private var requestedUrl: String? = null
                 private var receivedError: Boolean = false
+                private var pageLoadReported: Boolean = false
+
+                override fun shouldInterceptRequest(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                ): WebResourceResponse? {
+                    request ?: return null
+                    return pirRequestInterceptor.shouldInterceptRequest(request) {
+                        runBlocking { withContext(dispatcherProvider.main()) { view?.url } }?.toUri()
+                    }
+                }
 
                 @SuppressLint("RequiresFeature")
                 override fun shouldOverrideUrlLoading(
@@ -118,15 +149,21 @@ class RealPirDetachedWebViewProvider @Inject constructor() :
                     logcat { "PIR-SCAN: webview onPageStarted $url" }
                     requestedUrl = url
                     receivedError = false
+                    pageLoadReported = false
+                    view?.evaluateJavascript("javascript:$scriptToLoad", null)
                 }
 
                 override fun onPageFinished(
                     view: WebView?,
                     url: String?,
                 ) {
-                    if (!receivedError) {
+                    // WebView can fire onPageFinished more than once for a single navigation.
+                    // A duplicate that arrives while the engine is already awaiting its next
+                    // requested load gets consumed as that load's completion, advancing the
+                    // engine one navigation early, so report at most once per onPageStarted.
+                    if (!receivedError && !pageLoadReported) {
+                        pageLoadReported = true
                         logcat { "PIR-SCAN: webview onPageFinished receivedError $receivedError requestedUrl $requestedUrl for url $url" }
-                        view?.evaluateJavascript("javascript:$scriptToLoad", null)
                         onPageLoaded(url)
                     }
                     super.onPageFinished(view, url)
@@ -152,25 +189,27 @@ class RealPirDetachedWebViewProvider @Inject constructor() :
                     }
                     super.onReceivedError(view, request, error)
                 }
+
+                override fun onRenderProcessGone(
+                    view: WebView?,
+                    detail: RenderProcessGoneDetail?,
+                ): Boolean {
+                    val didCrash = detail?.didCrash() == true
+                    logcat { "PIR-SCAN: onRenderProcessGone didCrash=$didCrash - keeping :pir process alive" }
+                    onRendererGone(didCrash)
+                    // keep host process alive
+                    return true
+                }
             }
             settings.apply {
-                userAgentString = CUSTOM_UA
+                userAgentString = userAgentProvider.userAgent()
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 loadWithOverviewMode = true
                 useWideViewPort = true
-                builtInZoomControls = true
-                displayZoomControls = false
                 mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                setSupportMultipleWindows(false)
-                databaseEnabled = false
-                setSupportZoom(true)
+                cacheMode = WebSettings.LOAD_NO_CACHE
             }
         }
-    }
-
-    companion object {
-        private const val CUSTOM_UA =
-            "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.0.0 Mobile DuckDuckGo/5 Safari/537.36"
     }
 }

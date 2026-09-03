@@ -84,6 +84,7 @@
     <string name="subscriptionSettingSectionHelpAndSupport">Abi ja tugi</string>
     <string name="subscriptionSettingSendFeedback">Saada tagasisidet</string>
     <string name="subscriptionSettingActivating">Aktiveerimine</string>
+    <string name="subscriptionSettingManagePlan">Makse haldamine</string>
 
     <!--Purchase Subscriptions-->
     <string name="purchaseCompletedTitle">Kõik on valmis.</string>
@@ -103,8 +104,8 @@
     <string name="changePlanDescription">Teie tellimus osteti Apple\'i App Store\'i kaudu. Paketi või arvelduse seadistuste muutmiseks avage jaotis Seaded &gt; Apple\'i konto &gt; Tellimused seadmel, mis on sisse logitud sama Apple\'i kontoga, millelt ostsite oma tellimuse.</string>
 
     <!-- PIR Activity-->
-    <string name="pirTitle">Personal Information Removal\'i seadistamiseks aktiveerige töölaual Privacy Pro</string>
-    <string name="pirDescription">Mine töölaua DuckDuckGo brauseris jaotisesse <b>Seaded &gt; Privacy Pro</b> ja klõpsa alustamiseks <b>Mul on tellimus</b>.</string>
+    <string name="pirTitle">Personal Information Removal\'i seadistamiseks aktiveeri arvutis DuckDuckGo tellimus</string>
+    <string name="pirDescription">Mine töölaua DuckDuckGo brauseris jaotisse <b>Seaded &gt; DuckDuckGo tellimus</b> ja klõpsa alustamiseks <b>Mul on tellimus</b>.</string>
     <string name="pirWindowsButton" translatable="false">Windows</string>
     <string name="pirMacOsButton" translatable="false">Mac</string>
 
@@ -147,18 +148,14 @@
     <string name="feedbackSubCategoryItrAdvisorUnhelpful">Nõustajale helistamine ei aita</string>
     <string name="feedbackSubCategoryItrOther">Muu</string>
 
-    <string name="feedbackSubCategorySubsOtp">Ühekordne parool</string>
-    <string name="feedbackSubCategorySubsOther">Muu</string>
+    <string name="feedbackSubCategorySubsOtp">Probleem ühekordse parooliga</string>
+    <string name="feedbackSubCategorySubsOther">Midagi muud</string>
 
     <string name="feedbackSubmitVpnHeader">Kas leidsid probleemi, mida meie <annotation type="faqs_link">abikeskuses</annotation> ei käsitleta? Me tahame sellest kindlasti teada saada.</string>
     <string name="feedbackSubmitVpnDescriptionHint">Ütle meile, mis toimub...</string>
     <string name="feedbackSubmitVpnDisclaimer">"Lisaks eespool sisestatud andmetele saadame koos sinu tagasisidega ka mõned anonüümsed andmed:\n\n• Kas mõned brauseri funktsioonid on aktiivsed\n• Rakenduse koonddiagnostika (nt veakoodid)\n\nVajutades nuppu Saada, nõustud, et DuckDuckGo võib kasutada esitatud teavet rakenduse täiustamiseks."</string>
     <string name="feedbackSubmitVpnSubmit">Esita</string>
     <string name="feedbackSubmitCompletedMessage">Aitäh! Tagasiside on esitatud.</string>
-    <string name="feedbackSubmitFailedMessage">Midagi läks valesti</string>
-
-    <string name="feedbackSubmitEmailByLine">Anna oma e-posti aadress, kui soovid, et võtaksime sinuga selle probleemi osas ühendust (me ei pruugi kõigile probleemidele vastata):</string>
-    <string name="feedbackSubmitEmailHint">E-post (valikuline)</string>
 
     <string name="feedbackSubmitGeneralDescriptionHint">Palun anna meile tagasisidet...</string>
     <string name="feedbackSubmitFeatureRequestDescriptionHint">Millist funktsiooni soovid näha?</string>
@@ -168,16 +165,7 @@
     <string name="activitySubscriptions">Tellimused</string>
     <string name="activitySubscriptionSettings">Tellimuse seaded</string>
     <string name="activityActivateSubscription">Mul on tellimus</string>
-    <string name="activityPir" translatable="false">Privacy Pro</string>
     <string name="activitySendFeedback">Saada tagasisidet</string>
-
-    <!-- Dynamic Switch % -->
-    <string name="switchBottomSheetDynamicTitleUpgrade" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Säästa aastase plaaniga %1$s%%!</string>
-    <string name="switchBottomSheetDynamicTitleDowngrade" instruction="%1$s is the savings percentage when using a yearly plan instead of monthly (e.g. 16)">Sa säästad aastase plaaniga %1$s%%!</string>
-    <string name="subscriptionSettingSwitchUpgradeDynamic" instruction="%1$s is the savings percentage when switching from monthly to yearly (e.g. 16)">Mine üle aastasele plaanile ja säästa %1$s%%</string>
-
-    <!-- Privacy Pro Rebranding-->
-    <string name="subscriptionSettingRebrandingMessage">Privacy Pro kannab nüüd lihtsalt nime DuckDuckGo tellimus</string>
 
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitle">Tellijad saavad meie VPN-i, täiustatud tehisintellekti mudelid Duck.ai-s ja teenused Personal Information Removal ning Identity Theft Restoration.</string>
     <string name="subscriptionSettingSubscribeWithDuckAiSubtitleRow">Tellijad saavad meie VPN-i, täiustatud tehisintellekti mudelid Duck.ai-s ja teenuse Identity Theft Restoration.</string>
@@ -187,9 +175,32 @@
     <string name="feedbackSubCategoryDuckAiLoginThirdPartyBrowser">Ei pääse Duck.ai-le teistes brauserites oma tellimusega ligi</string>
     <string name="feedbackSubCategoryDuckAiOther">Muu Duck.ai tagasiside</string>
 
-    <string name="subscriptionSettingSectionTitle" translatable="false">DuckDuckGo Subscription</string>
+    <string name="subscriptionSettingSectionTitle">DuckDuckGo tellimus</string>
     <string name="subscriptionSettingSubscribeSecure">Muuda oma Wi-Fi turvaliseks ja vestle privaatselt täiustatud tehisintellekti mudelitega</string>
 
     <string name="feedbackGeneralSubscription">Püsitellimus</string>
+
+    <!-- Pro tier changes -->
+    <string name="feedbackSubCategorySubsUnableToAccessProFeatures">Ei saa Plus või Pro taseme funktsioonidele ligi pääseda</string>
+    <string name="subscriptionsProUpgradeTitle">Mine üle Pro-le</string>
+    <string name="subscriptionsProUpgradeMessage">Vabasta võimsam tehisintellekt</string>
+    <string name="subscriptionSettingSectionManageSubscription">Tellimuse haldamine</string>
+    <string name="subscriptionSettingViewAllPlans">Vaata kõiki plaane</string>
+    <string name="subscriptionSettingManagePaymentOrCancel">Makse haldamine või tühistamine</string>
+
+    <!-- Pending plan changes -->
+    <string name="subscriptionPendingPlanChangeDowngradePanel" instruction="First placeholder is the Tier name (e.g. Plus, Pro), second is date in short format (month day)">Sinu pakett alandatakse plaanile %1$s kuupäeval %2$s.</string>
+    <string name="subscriptionPendingPlanChangeUpgrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">Sinu plaan uuendatakse plaanile %1$s kuupäeval %2$s.</string>
+    <string name="subscriptionPendingPlanChangeDowngrade" instruction="First placeholder is the plan name (e.g. Plus Yearly), third is a date">Sinu pakett alandatakse plaanile %1$s kuupäeval %2$s.</string>
+    <string name="planNamePlusMonthly">Plus Monthly</string>
+    <string name="planNamePlusYearly">Plus Yearly</string>
+    <string name="planNameProMonthly">Pro Monthly</string>
+    <string name="planNameProYearly">Pro Yearly</string>
+    <string name="tierPlusName" translatable="false">PLUS</string>
+    <string name="tierProName" translatable="false">PRO</string>
+
+    <!-- Content Descriptions -->
+    <string name="subscriptionExpiredStatusIconContentDescription">Tellimus on aegunud</string>
+    <string name="subscriptionActiveStatusIconContentDescription">Tellimus on aktiivne</string>
 
 </resources>

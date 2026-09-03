@@ -47,11 +47,10 @@ class NotifyMeViewModelTest {
 
     private val mockAppBuildConfig = mock<AppBuildConfig>()
     private val mockNotifyMeDataStore = mock<NotifyMeDataStore>()
-    private val mockNotifyMeListener = mock<NotifyMeListener>()
     private val mockLifecycleOwner = mock<LifecycleOwner>()
 
     private val testee: NotifyMeViewModel by lazy {
-        NotifyMeViewModel(mockAppBuildConfig, mockNotifyMeDataStore, mockNotifyMeListener)
+        NotifyMeViewModel(mockAppBuildConfig, mockNotifyMeDataStore)
     }
 
     @Before
@@ -194,12 +193,11 @@ class NotifyMeViewModelTest {
                 awaitItem(),
             )
         }
-        verify(mockNotifyMeListener).onNotifyMeButtonClicked()
     }
 
     @Test
-    fun whenOnNotifyMeButtonClickedOnAndroid8ThenOpenSettingsOnAndroid8PlusCommandIsSent() = runTest {
-        whenever(mockAppBuildConfig.sdkInt).thenReturn(Build.VERSION_CODES.O)
+    fun whenOnNotifyMeButtonClickedOnAndroid9ThenOpenSettingsOnAndroid9PlusCommandIsSent() = runTest {
+        whenever(mockAppBuildConfig.sdkInt).thenReturn(Build.VERSION_CODES.P)
 
         testee.onNotifyMeButtonClicked()
 
@@ -239,8 +237,8 @@ class NotifyMeViewModelTest {
     }
 
     @Test
-    fun whenHandleRequestPermissionRationaleOnAndroid8WithShouldShowRationaleFalseThenOpenSettingsOnAndroid8PlusCommandIsSent() = runTest {
-        whenever(mockAppBuildConfig.sdkInt).thenReturn(Build.VERSION_CODES.O)
+    fun whenHandleRequestPermissionRationaleOnAndroid9WithShouldShowRationaleFalseThenOpenSettingsOnAndroid9PlusCommandIsSent() = runTest {
+        whenever(mockAppBuildConfig.sdkInt).thenReturn(Build.VERSION_CODES.P)
         val shouldShowRationale = false
 
         testee.handleRequestPermissionRationale(shouldShowRationale)

@@ -18,22 +18,23 @@ package com.duckduckgo.app.browser.omnibar
 
 import android.view.View
 import android.widget.ImageView
+import androidx.annotation.DrawableRes
 import androidx.appcompat.widget.Toolbar
 import com.airbnb.lottie.LottieAnimationView
 import com.duckduckgo.app.browser.databinding.IncludeFindInPageBinding
-import com.duckduckgo.app.browser.omnibar.Omnibar.InputScreenLaunchListener
 import com.duckduckgo.app.browser.omnibar.Omnibar.ItemPressedListener
 import com.duckduckgo.app.browser.omnibar.Omnibar.LogoClickListener
+import com.duckduckgo.app.browser.omnibar.Omnibar.NativeInputLaunchListener
 import com.duckduckgo.app.browser.omnibar.Omnibar.TextListener
 import com.duckduckgo.app.browser.omnibar.model.Decoration
 import com.duckduckgo.app.browser.omnibar.model.StateChange
-import com.duckduckgo.browser.ui.omnibar.OmnibarType
 import com.duckduckgo.common.ui.view.KeyboardAwareEditText
 import kotlinx.coroutines.flow.Flow
 
 interface OmnibarView {
     val omnibarType: OmnibarType
     var isScrollingEnabled: Boolean
+    var isUiLocked: Boolean
     val isEditing: Boolean
     val isEditingFlow: Flow<Boolean>
     val findInPage: IncludeFindInPageBinding
@@ -45,16 +46,18 @@ interface OmnibarView {
     fun setOmnibarTextListener(textListener: TextListener)
     fun setOmnibarItemPressedListener(itemPressedListener: ItemPressedListener)
     fun setLogoClickListener(logoClickListener: LogoClickListener)
-    fun setInputScreenLaunchListener(listener: InputScreenLaunchListener)
+    fun setNativeInputLaunchListener(listener: NativeInputLaunchListener)
     fun decorate(decoration: Decoration)
     fun reduce(stateChange: StateChange)
     fun isPulseAnimationPlaying(): Boolean
     fun setDraftTextIfNtpOrSerp(query: String)
     fun setExpanded(expanded: Boolean)
+    fun disableViewStateSaving()
     fun setExpanded(
         expanded: Boolean,
         animate: Boolean,
     )
+    fun setMenuIcon(@DrawableRes resId: Int)
     fun show()
     fun gone()
 }

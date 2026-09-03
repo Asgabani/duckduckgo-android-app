@@ -16,16 +16,12 @@
 
 package com.duckduckgo.pir.impl.pixels
 
-import android.content.Context
-import android.os.PowerManager
-import android.util.Base64
 import com.duckduckgo.appbuildconfig.api.AppBuildConfig
 import com.duckduckgo.common.utils.plugins.pixel.PixelInterceptorPlugin
 import com.duckduckgo.di.scopes.AppScope
 import com.squareup.anvil.annotations.ContributesMultibinding
 import okhttp3.Interceptor
 import okhttp3.Response
-import org.json.JSONObject
 import javax.inject.Inject
 
 @ContributesMultibinding(
@@ -33,47 +29,65 @@ import javax.inject.Inject
     boundType = PixelInterceptorPlugin::class,
 )
 class PirPixelInterceptor @Inject constructor(
-    private val context: Context,
     private val appBuildConfig: AppBuildConfig,
 ) : PixelInterceptorPlugin, Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request().newBuilder()
-        val pixel = chain.request().url.pathSegments.last()
+        val originalRequest = chain.request()
+        val pixel = originalRequest.url.pathSegments.last()
 
-        val url = if (pixel.startsWith(PIXEL_PREFIX) && !EXCEPTIONS.any { exception -> pixel.startsWith(exception) }) {
-            chain.request().url.newBuilder()
-                .addQueryParameter(
-                    KEY_METADATA,
-                    JSONObject()
-                        .put("os", appBuildConfig.sdkInt)
-                        .put("batteryOptimizations", (!isIgnoringBatteryOptimizations()).toString())
-                        .put("man", appBuildConfig.manufacturer)
-                        .toString().toByteArray().run {
-                            Base64.encodeToString(this, Base64.NO_WRAP or Base64.NO_PADDING or Base64.URL_SAFE)
-                        },
-                )
+        return if (ALLOWLIST.any { prefix -> pixel.startsWith(prefix) }) {
+            val newUrl = originalRequest.url.newBuilder()
+                .addQueryParameter(KEY_MANUFACTURER, normalizedManufacturer())
                 .build()
+            val newRequest = originalRequest.newBuilder().url(newUrl).build()
+            chain.proceed(newRequest)
         } else {
-            chain.request().url
+            chain.proceed(originalRequest)
         }
+    }
 
-        return chain.proceed(request.url(url).build())
+    private fun normalizedManufacturer(): String {
+        val raw = appBuildConfig.manufacturer.lowercase()
+        return if (raw in COMMON_MANUFACTURERS) raw else OTHER_MANUFACTURER
     }
 
     override fun getInterceptor(): Interceptor = this
 
-    private fun isIgnoringBatteryOptimizations(): Boolean {
-        return runCatching {
-            context.packageName?.let {
-                val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-                powerManager.isIgnoringBatteryOptimizations(context.packageName)
-            } ?: false
-        }.getOrDefault(false)
-    }
-
     companion object {
-        private const val KEY_METADATA = "metadata"
-        private const val PIXEL_PREFIX = "pir_internal"
-        private val EXCEPTIONS = emptyList<String>()
+        private const val KEY_MANUFACTURER = "manufacturer"
+        private const val OTHER_MANUFACTURER = "other"
+        private val COMMON_MANUFACTURERS = setOf(
+            "samsung",
+            "google",
+            "xiaomi",
+            "huawei",
+            "honor",
+            "oneplus",
+            "oppo",
+            "vivo",
+            "motorola",
+            "realme",
+            "sony",
+            "lg",
+            "nokia",
+            "lenovo",
+            "asus",
+        )
+        private val ALLOWLIST = listOf(
+            "m_dbp_foreground-run_started",
+            "m_dbp_foreground-run_completed",
+            "m_dbp_foreground-run_start-failed",
+            "m_dbp_foreground-run_low-memory",
+            "m_dbp_scheduled-run_started",
+            "m_dbp_scheduled-run_completed",
+            "m_dbp_email-confirmation_started",
+            "m_dbp_email-confirmation_completed",
+            "m_dbp_initial-scan_incomplete",
+            "m_dbp_initial_scan_duration",
+            "m_dbp_scan_renderer-gone",
+            "wide_pir-initial-scan",
+            "wide_pir-scheduled-scan",
+            "wide_pir-time-to-first-scan-complete",
+        )
     }
 }

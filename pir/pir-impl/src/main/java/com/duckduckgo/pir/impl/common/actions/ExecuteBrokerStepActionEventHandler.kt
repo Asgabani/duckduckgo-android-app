@@ -16,28 +16,48 @@
 
 package com.duckduckgo.pir.impl.common.actions
 
+import com.duckduckgo.common.utils.CurrentTimeProvider
 import com.duckduckgo.di.scopes.AppScope
 import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep
 import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.EmailConfirmationStep
 import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.OptOutStep
+import com.duckduckgo.pir.impl.common.BrokerStepsParser.BrokerStep.ScanStep
 import com.duckduckgo.pir.impl.common.PirJob
+import com.duckduckgo.pir.impl.common.PirJobConstants.GATED_ACTION_PUSH_DELAY_MS
+import com.duckduckgo.pir.impl.common.PirJobConstants.OPT_OUT_FILL_FORM_PUSH_DELAY_MS
+import com.duckduckgo.pir.impl.common.PirRunStateHandler
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerOptOutStageCaptchaSolved
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerOptOutStageSubmit
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerScanActionStarted
 import com.duckduckgo.pir.impl.common.actions.EventHandler.Next
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.Event
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.Event.BrokerStepCompleted
+import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.Event.BrokerStepCompleted.StepStatus
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.Event.ExecuteBrokerStepAction
+import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.PirStageStatus
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.SideEffect.AwaitCaptchaSolution
+import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.SideEffect.AwaitEmailData
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.SideEffect.GetEmailForProfile
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.SideEffect.LoadUrl
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.SideEffect.PushJsAction
 import com.duckduckgo.pir.impl.common.actions.PirActionsRunnerStateEngine.State
 import com.duckduckgo.pir.impl.common.toParams
-import com.duckduckgo.pir.impl.models.ProfileQuery
+import com.duckduckgo.pir.impl.pixels.PirStage
 import com.duckduckgo.pir.impl.scripts.models.BrokerAction
 import com.duckduckgo.pir.impl.scripts.models.BrokerAction.Click
 import com.duckduckgo.pir.impl.scripts.models.BrokerAction.EmailConfirmation
 import com.duckduckgo.pir.impl.scripts.models.BrokerAction.Expectation
+import com.duckduckgo.pir.impl.scripts.models.BrokerAction.FillForm
+import com.duckduckgo.pir.impl.scripts.models.BrokerAction.GenerateEmail
+import com.duckduckgo.pir.impl.scripts.models.BrokerAction.GetCaptchaInfo
+import com.duckduckgo.pir.impl.scripts.models.BrokerAction.GetEmailData
 import com.duckduckgo.pir.impl.scripts.models.BrokerAction.SolveCaptcha
+import com.duckduckgo.pir.impl.scripts.models.DataSource.EMAIL_DATA
 import com.duckduckgo.pir.impl.scripts.models.DataSource.EXTRACTED_PROFILE
+import com.duckduckgo.pir.impl.scripts.models.DataSource.FETCHED_EMAIL
+import com.duckduckgo.pir.impl.scripts.models.ExtractedProfileParams
+import com.duckduckgo.pir.impl.scripts.models.FetchedEmail
+import com.duckduckgo.pir.impl.scripts.models.PirError
 import com.duckduckgo.pir.impl.scripts.models.PirScriptRequestData
 import com.duckduckgo.pir.impl.scripts.models.PirScriptRequestData.UserProfile
 import com.squareup.anvil.annotations.ContributesMultibinding
@@ -48,7 +68,10 @@ import kotlin.reflect.KClass
     scope = AppScope::class,
     boundType = EventHandler::class,
 )
-class ExecuteBrokerStepActionEventHandler @Inject constructor() : EventHandler {
+class ExecuteBrokerStepActionEventHandler @Inject constructor(
+    private val pirRunStateHandler: PirRunStateHandler,
+    private val currentTimeProvider: CurrentTimeProvider,
+) : EventHandler {
     override val event: KClass<out Event> = ExecuteBrokerStepAction::class
 
     override suspend fun invoke(
@@ -67,62 +90,99 @@ class ExecuteBrokerStepActionEventHandler @Inject constructor() : EventHandler {
          *      we are ready to push the action to js layer
          *  - For any other action, we push it to the js layer via [PushJsAction]
          */
-        val currentBrokerStep = state.brokerStepsToExecute[state.currentBrokerStepIndex]
+        val currentBrokerStep = state.brokerStep
         val requestData = (event as ExecuteBrokerStepAction).actionRequestData
 
-        return if (state.currentActionIndex == currentBrokerStep.actions.size) {
+        return if (state.currentActionIndex == currentBrokerStep.step.actions.size) {
             Next(
                 nextState = state,
-                nextEvent = BrokerStepCompleted(needsEmailConfirmation = false, isSuccess = true),
+                nextEvent = BrokerStepCompleted(needsEmailConfirmation = false, stepStatus = StepStatus.Success),
             )
         } else {
-            val actionToExecute = currentBrokerStep.actions[state.currentActionIndex]
+            val actionToExecute = currentBrokerStep.step.actions[state.currentActionIndex]
 
             if ((currentBrokerStep is OptOutStep || currentBrokerStep is EmailConfirmationStep) &&
                 actionToExecute.needsEmail &&
-                !hasEmail(currentBrokerStep)
+                state.generatedEmailData == null
             ) {
-                val extractedProfile = when (currentBrokerStep) {
-                    is OptOutStep -> {
-                        currentBrokerStep.profileToOptOut
-                    }
-                    is EmailConfirmationStep -> {
-                        currentBrokerStep.profileToOptOut
-                    }
-                    else -> null // Invalid state
-                }
-
                 Next(
-                    nextState = state,
+                    nextState = state.copy(
+                        stageStatus = PirStageStatus(
+                            currentStage = PirStage.EMAIL_GENERATE,
+                            stageStartMs = currentTimeProvider.currentTimeMillis(),
+                        ),
+                    ),
                     sideEffect =
                     GetEmailForProfile(
                         actionId = actionToExecute.id,
-                        brokerName = currentBrokerStep.brokerName,
-                        extractedProfile = extractedProfile!!,
-                        profileQuery = state.profileQuery,
+                        brokerName = currentBrokerStep.broker.name,
+                    ),
+                )
+            } else if (actionToExecute is GenerateEmail) {
+                Next(
+                    nextState = state.copy(
+                        stageStatus = PirStageStatus(
+                            currentStage = PirStage.EMAIL_GENERATE,
+                            stageStartMs = currentTimeProvider.currentTimeMillis(),
+                        ),
+                    ),
+                    sideEffect = GetEmailForProfile(
+                        actionId = actionToExecute.id,
+                        brokerName = currentBrokerStep.broker.name,
+                    ),
+                )
+            } else if (actionToExecute is GetEmailData) {
+                Next(
+                    nextState = state.copy(
+                        stageStatus = PirStageStatus(
+                            currentStage = PirStage.EMAIL_DATA_POLL,
+                            stageStartMs = currentTimeProvider.currentTimeMillis(),
+                        ),
+                    ),
+                    sideEffect = AwaitEmailData(
+                        actionId = actionToExecute.id,
+                        brokerName = currentBrokerStep.broker.name,
+                        emailAddress = state.generatedEmailData?.emailAddress.orEmpty(),
+                        attemptId = state.attemptId,
+                        extractFields = actionToExecute.extract,
+                        pollingIntervalSeconds = actionToExecute.pollingTime.toIntOrNull() ?: DEFAULT_EMAIL_DATA_POLL_INTERVAL_SECONDS,
                     ),
                 )
             } else {
                 var pushDelay = 0L
                 // Adding a delay here similar to macOS - to ensure the site completes loading before executing anything.
                 if (actionToExecute is Click || actionToExecute is Expectation) {
-                    pushDelay = 10_000
+                    pushDelay = GATED_ACTION_PUSH_DELAY_MS
                 }
 
                 // Adding a temporary delay to potentially workaround captcha for optouts
                 if ((state.runType == PirJob.RunType.OPTOUT || state.runType == PirJob.RunType.EMAIL_CONFIRMATION) &&
                     actionToExecute is BrokerAction.FillForm
                 ) {
-                    pushDelay = 5_000
+                    pushDelay = OPT_OUT_FILL_FORM_PUSH_DELAY_MS
                 }
 
                 if (currentBrokerStep is OptOutStep && actionToExecute is EmailConfirmation) {
+                    pirRunStateHandler.handleState(
+                        BrokerOptOutStageSubmit(
+                            broker = currentBrokerStep.broker,
+                            actionID = actionToExecute.id,
+                            attemptId = state.attemptId,
+                            durationMs = currentTimeProvider.currentTimeMillis() - state.stageStatus.stageStartMs,
+                            currentActionAttemptCount = state.actionRetryCount + 1,
+                        ),
+                    )
                     Next(
-                        nextState = state,
+                        nextState = state.copy(
+                            stageStatus = PirStageStatus(
+                                currentStage = PirStage.EMAIL_CONFIRM_HALTED,
+                                stageStartMs = currentTimeProvider.currentTimeMillis(),
+                            ),
+                        ),
                         nextEvent =
                         BrokerStepCompleted(
                             needsEmailConfirmation = true,
-                            isSuccess = true,
+                            stepStatus = StepStatus.Success,
                         ),
                     )
                 } else if (currentBrokerStep is EmailConfirmationStep && actionToExecute is EmailConfirmation) {
@@ -134,7 +194,9 @@ class ExecuteBrokerStepActionEventHandler @Inject constructor() : EventHandler {
                             nextEvent =
                             BrokerStepCompleted(
                                 needsEmailConfirmation = true,
-                                isSuccess = false,
+                                stepStatus = StepStatus.Failure(
+                                    error = PirError.Unknown(""),
+                                ),
                             ),
                         )
                     } else {
@@ -149,24 +211,83 @@ class ExecuteBrokerStepActionEventHandler @Inject constructor() : EventHandler {
                     }
                 } else if (actionToExecute is SolveCaptcha && requestData !is PirScriptRequestData.SolveCaptcha) {
                     Next(
-                        nextState = state,
+                        nextState = state.copy(
+                            stageStatus = PirStageStatus(
+                                currentStage = PirStage.CAPTCHA_SOLVE,
+                                stageStartMs = currentTimeProvider.currentTimeMillis(),
+                            ),
+                        ),
                         sideEffect =
                         AwaitCaptchaSolution(
                             actionId = actionToExecute.id,
-                            brokerName = currentBrokerStep.brokerName,
+                            brokerName = currentBrokerStep.broker.name,
                             transactionID = state.transactionID,
                             attempt = 0,
                         ),
                     )
                 } else {
+                    if (currentBrokerStep is ScanStep) {
+                        pirRunStateHandler.handleState(
+                            BrokerScanActionStarted(
+                                broker = currentBrokerStep.broker,
+                                profileQueryId = state.profileQuery.id,
+                                currentActionAttemptCount = state.actionRetryCount + 1, // actionRetryCount starts at 0
+                                currentAction = actionToExecute,
+                            ),
+                        )
+                    } else if (currentBrokerStep is OptOutStep && actionToExecute is SolveCaptcha) {
+                        pirRunStateHandler.handleState(
+                            BrokerOptOutStageCaptchaSolved(
+                                broker = currentBrokerStep.broker,
+                                actionID = currentBrokerStep.step.actions[state.currentActionIndex].id,
+                                attemptId = state.attemptId,
+                                durationMs = currentTimeProvider.currentTimeMillis() - state.stageStatus.stageStartMs,
+                                currentActionAttemptCount = state.actionRetryCount + 1,
+                            ),
+                        )
+                    }
+
+                    val nextState = when (actionToExecute) {
+                        is GetCaptchaInfo -> {
+                            state.copy(
+                                stageStatus = PirStageStatus(
+                                    currentStage = PirStage.CAPTCHA_PARSE,
+                                    stageStartMs = currentTimeProvider.currentTimeMillis(),
+                                ),
+                            )
+                        }
+
+                        is Expectation -> {
+                            state.copy(
+                                stageStatus = PirStageStatus(
+                                    currentStage = PirStage.SUBMIT,
+                                    stageStartMs = currentTimeProvider.currentTimeMillis(),
+                                ),
+                            )
+                        }
+
+                        is FillForm, is Click -> {
+                            state.copy(
+                                stageStatus = PirStageStatus(
+                                    currentStage = PirStage.FILL_FORM,
+                                    stageStartMs = currentTimeProvider.currentTimeMillis(),
+                                ),
+                            )
+                        }
+
+                        else -> {
+                            state
+                        }
+                    }
+
                     Next(
-                        nextState = state,
+                        nextState = nextState,
                         sideEffect =
                         PushJsAction(
                             actionToExecute.id,
                             actionToExecute,
                             pushDelay,
-                            completeRequestData(currentBrokerStep, actionToExecute, state.profileQuery, requestData),
+                            completeRequestData(currentBrokerStep, actionToExecute, state, requestData),
                         ),
                     )
                 }
@@ -174,41 +295,41 @@ class ExecuteBrokerStepActionEventHandler @Inject constructor() : EventHandler {
         }
     }
 
-    private fun hasEmail(brokerStep: BrokerStep): Boolean {
-        return if (brokerStep is OptOutStep) {
-            brokerStep.profileToOptOut.email.isNotEmpty()
-        } else if (brokerStep is EmailConfirmationStep) {
-            brokerStep.profileToOptOut.email.isNotEmpty()
-        } else {
-            false
-        }
-    }
-
     private fun completeRequestData(
         brokerStep: BrokerStep,
         actionToExecute: BrokerAction,
-        profileQuery: ProfileQuery,
+        state: State,
         requestData: PirScriptRequestData,
     ): PirScriptRequestData {
-        val extractedProfile = if (brokerStep is OptOutStep && actionToExecute.dataSource == EXTRACTED_PROFILE &&
-            (requestData as UserProfile).extractedProfile == null
-        ) {
-            brokerStep.profileToOptOut
-        } else if (brokerStep is EmailConfirmationStep && actionToExecute.dataSource == EXTRACTED_PROFILE &&
-            (requestData as UserProfile).extractedProfile == null
-        ) {
-            brokerStep.profileToOptOut
-        } else {
-            null
+        if (requestData !is UserProfile) {
+            return requestData
         }
+        return when (actionToExecute.dataSource) {
+            FETCHED_EMAIL -> {
+                val email = state.generatedEmailData?.emailAddress ?: return requestData
+                requestData.copy(fetchedEmail = FetchedEmail(email = email))
+            }
+            EMAIL_DATA -> {
+                if (state.emailExtractedData.isEmpty()) return requestData
+                requestData.copy(emailData = state.emailExtractedData)
+            }
+            EXTRACTED_PROFILE -> {
+                if (requestData.extractedProfile != null) return requestData
+                val baseParams: ExtractedProfileParams = when (brokerStep) {
+                    is OptOutStep -> brokerStep.profileToOptOut.toParams(state.profileQuery.fullName)
+                    is EmailConfirmationStep -> brokerStep.profileToOptOut.toParams(state.profileQuery.fullName)
+                    is ScanStep -> if (state.generatedEmailData != null) ExtractedProfileParams() else return requestData
+                }
+                val withEmail = state.generatedEmailData?.let {
+                    baseParams.copy(email = it.emailAddress)
+                } ?: baseParams
+                requestData.copy(extractedProfile = withEmail)
+            }
+            else -> requestData
+        }
+    }
 
-        return if (extractedProfile != null && requestData is UserProfile) {
-            UserProfile(
-                userProfile = requestData.userProfile,
-                extractedProfile = extractedProfile.toParams(profileQuery.fullName),
-            )
-        } else {
-            requestData
-        }
+    companion object {
+        private const val DEFAULT_EMAIL_DATA_POLL_INTERVAL_SECONDS = 5
     }
 }

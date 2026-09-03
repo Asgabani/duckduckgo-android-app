@@ -20,13 +20,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import com.duckduckgo.common.ui.compose.theme.DuckDuckGoTextStyle
 import com.duckduckgo.common.ui.compose.theme.DuckDuckGoTheme
 import com.duckduckgo.common.ui.compose.theme.asTextStyle
 import com.duckduckgo.common.ui.compose.tools.PreviewBox
+import com.duckduckgo.common.ui.compose.tools.PreviewBoxInverted
 
 /**
  * Base text component for the DuckDuckGo design system.
@@ -59,10 +66,41 @@ fun DaxText(
     )
 }
 
+/**
+ * [AnnotatedString] variant of [DaxText]. Use this when the text needs inline
+ * styling (bold spans, color spans, links, etc.). Build the [AnnotatedString]
+ * with [buildAnnotatedString] or compose it from string resources.
+ *
+ * @param color The default text color applied to spans that do not override it via [SpanStyle].
+ *
+ * Asana Task: https://app.asana.com/1/137249556945/project/1202857801505092/task/1211634956773768
+ * Figma reference: https://www.figma.com/design/jHLwh4erLbNc2YeobQpGFt/Design-System-Guidelines?node-id=1313-19967
+ * */
+@Composable
+fun DaxText(
+    text: AnnotatedString,
+    modifier: Modifier = Modifier,
+    style: DuckDuckGoTextStyle = DuckDuckGoTheme.typography.body1,
+    color: Color = DuckDuckGoTheme.textColors.primary,
+    textAlign: TextAlign? = null,
+    overflow: TextOverflow = TextOverflow.Ellipsis,
+    maxLines: Int = Int.MAX_VALUE,
+) {
+    Text(
+        text = text,
+        color = color,
+        style = style.asTextStyle,
+        textAlign = textAlign,
+        overflow = overflow,
+        maxLines = maxLines,
+        modifier = modifier,
+    )
+}
+
 @PreviewLightDark
 @Composable
 private fun DaxTextTitlePreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "Title Text", style = DuckDuckGoTheme.typography.title)
     }
 }
@@ -70,7 +108,7 @@ private fun DaxTextTitlePreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextH1Preview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "H1 Text", style = DuckDuckGoTheme.typography.h1)
     }
 }
@@ -78,7 +116,7 @@ private fun DaxTextH1Preview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextH2Preview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "H2 Text", style = DuckDuckGoTheme.typography.h2)
     }
 }
@@ -86,7 +124,7 @@ private fun DaxTextH2Preview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextH3Preview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "H3 Text", style = DuckDuckGoTheme.typography.h3)
     }
 }
@@ -94,7 +132,7 @@ private fun DaxTextH3Preview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextH4Preview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "H4 Text", style = DuckDuckGoTheme.typography.h4)
     }
 }
@@ -102,7 +140,7 @@ private fun DaxTextH4Preview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextH5Preview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "H5 Text", style = DuckDuckGoTheme.typography.h5)
     }
 }
@@ -110,7 +148,7 @@ private fun DaxTextH5Preview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextBody1Preview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "Body1 Text", style = DuckDuckGoTheme.typography.body1)
     }
 }
@@ -118,7 +156,7 @@ private fun DaxTextBody1Preview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextBody1BoldPreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "Body1Bold Text", style = DuckDuckGoTheme.typography.body1Bold)
     }
 }
@@ -126,7 +164,7 @@ private fun DaxTextBody1BoldPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextBody1MonoPreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "Body1Mono Text", style = DuckDuckGoTheme.typography.body1Mono)
     }
 }
@@ -134,7 +172,7 @@ private fun DaxTextBody1MonoPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextBody2Preview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "Body2 Text", style = DuckDuckGoTheme.typography.body2)
     }
 }
@@ -142,7 +180,7 @@ private fun DaxTextBody2Preview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextBody2BoldPreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "Body2Bold Text", style = DuckDuckGoTheme.typography.body2Bold)
     }
 }
@@ -150,7 +188,7 @@ private fun DaxTextBody2BoldPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextButtonPreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "Button Text", style = DuckDuckGoTheme.typography.button)
     }
 }
@@ -158,7 +196,7 @@ private fun DaxTextButtonPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextCaptionPreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(text = "Caption Text", style = DuckDuckGoTheme.typography.caption)
     }
 }
@@ -166,7 +204,7 @@ private fun DaxTextCaptionPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextColorPrimaryPreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(
             text = "Primary Color",
             color = DuckDuckGoTheme.textColors.primary,
@@ -177,7 +215,7 @@ private fun DaxTextColorPrimaryPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextColorPrimaryInvertedPreview() {
-    DaxTextInvertedPreviewBox {
+    PreviewBoxInverted {
         DaxText(
             text = "Primary Inverted",
             color = DuckDuckGoTheme.textColors.primaryInverted,
@@ -188,7 +226,7 @@ private fun DaxTextColorPrimaryInvertedPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextColorSecondaryPreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(
             text = "Secondary Color",
             color = DuckDuckGoTheme.textColors.secondary,
@@ -199,7 +237,7 @@ private fun DaxTextColorSecondaryPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextColorSecondaryInvertedPreview() {
-    DaxTextInvertedPreviewBox {
+    PreviewBoxInverted {
         DaxText(
             text = "Secondary Inverted",
             color = DuckDuckGoTheme.textColors.secondaryInverted,
@@ -210,7 +248,7 @@ private fun DaxTextColorSecondaryInvertedPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextColorTertiaryPreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(
             text = "Tertiary Color",
             color = DuckDuckGoTheme.textColors.tertiary,
@@ -221,7 +259,7 @@ private fun DaxTextColorTertiaryPreview() {
 @PreviewLightDark
 @Composable
 private fun DaxTextColorDisabledPreview() {
-    DaxTextPreviewBox {
+    PreviewBox {
         DaxText(
             text = "Disabled Color",
             color = DuckDuckGoTheme.textColors.disabled,
@@ -229,24 +267,20 @@ private fun DaxTextColorDisabledPreview() {
     }
 }
 
+@PreviewLightDark
 @Composable
-private fun DaxTextPreviewBox(
-    content: @Composable () -> Unit,
-) {
-    DuckDuckGoTheme {
-        PreviewBox(backgroundColor = DuckDuckGoTheme.colors.background) {
-            content()
-        }
-    }
-}
-
-@Composable
-private fun DaxTextInvertedPreviewBox(
-    content: @Composable () -> Unit,
-) {
-    DuckDuckGoTheme {
-        PreviewBox(backgroundColor = DuckDuckGoTheme.colors.backgroundInverted) {
-            content()
-        }
+private fun DaxTextAnnotatedStringPreview() {
+    PreviewBox {
+        DaxText(
+            text = buildAnnotatedString {
+                append("Normal, ")
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("bold") }
+                append(", ")
+                withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) { append("underlined") }
+                append(", and ")
+                withStyle(SpanStyle(color = DuckDuckGoTheme.textColors.secondary)) { append("colored") }
+                append(" spans.")
+            },
+        )
     }
 }

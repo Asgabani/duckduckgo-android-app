@@ -20,18 +20,28 @@ import com.duckduckgo.app.statistics.pixels.Pixel
 
 enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     APP_LAUNCH("ml"),
+    APP_RETURN_COUNT("m_app_return_count"),
+    APP_RETURN_DAILY("m_app_return_daily"),
     PROCESS_CREATED_MAIN("m_process_created_main"),
     PROCESS_CREATED_VPN("m_process_created_vpn"),
 
     APP_LAUNCH_VERIFIED_INSTALL("m_app_launched_on_verified_play_store_install"),
+    APP_INSTALL_VERIFIED_INSTALL("verified_app_install"),
+    APP_UPDATE_VERIFIED_INSTALL("verified_app_update"),
 
     FORGET_ALL_PRESSED_BROWSING("mf_bp"),
+    FORGET_ALL_PRESSED_BROWSING_DAILY("m_fire_button_tapped_browser_daily"),
     FORGET_ALL_PRESSED_TABSWITCHING("mf_tp"),
+    FORGET_ALL_PRESSED_TABSWITCHING_DAILY("m_fire_button_tapped_tab_switcher_daily"),
+    FORGET_ALL_PRESSED_SETTINGS("m_fire_button_tapped_settings"),
+    FORGET_ALL_PRESSED_SETTINGS_DAILY("m_fire_button_tapped_settings_daily"),
     FORGET_ALL_EXECUTED("mf"),
+    FORGET_ALL_EXECUTED_DAILY("m_fire_button_executed_daily"),
+    FORGET_ALL_EXECUTED_REGULAR_DAILY("m_fire_button_executed_regular_daily"),
+    FORGET_ALL_EXECUTED_FIRE_DAILY("m_fire_button_executed_fire_daily"),
     FORGET_ALL_AUTO_RESTART("m_f_r"),
     FORGET_ALL_AUTO_RESTART_WITH_INTENT("m_f_ri"),
 
-    BROKEN_SITE_REPORTED("m_bsr"),
     BROKEN_SITE_REPORT("epbf"),
     BROKEN_SITE_ALLOWLIST_ADD("m_broken_site_allowlist_add"),
     BROKEN_SITE_ALLOWLIST_REMOVE("m_broken_site_allowlist_remove"),
@@ -43,7 +53,22 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     PREONBOARDING_CHOOSE_BROWSER_PRESSED("m_preonboarding_choose_browser_pressed"),
     PREONBOARDING_ADDRESS_BAR_POSITION_SHOWN_UNIQUE("m_preonboarding_address_bar_position_dialog_shown_unique"),
     PREONBOARDING_BOTTOM_ADDRESS_BAR_SELECTED_UNIQUE("m_preonboarding_bottom_address_bar_selected_unique"),
+    PREONBOARDING_SPLIT_ADDRESS_BAR_SELECTED_UNIQUE("m_preonboarding_split_address_bar_selected_unique"),
+    PREONBOARDING_SYNC_RESTORE_SHOWN_UNIQUE("sync-auto-restore_onboarding_prompt_shown_unique"),
+    PREONBOARDING_SYNC_RESTORE_TAPPED_UNIQUE("sync-auto-restore_onboarding_restore_tapped_unique"),
+    PREONBOARDING_SYNC_SKIP_RESTORE_TAPPED_UNIQUE("sync-auto-restore_onboarding_skip_tapped_unique"),
     PREONBOARDING_SKIP_ONBOARDING_SHOWN_UNIQUE("m_preonboarding_skip_onboarding_shown_unique"),
+    PREONBOARDING_CHOOSE_SEARCH_EXPERIENCE_IMPRESSIONS_UNIQUE("m_preonboarding_choose_search_experience_impressions_unique"),
+    PREONBOARDING_AICHAT_SELECTED("m_preonboarding_aichat_selected"),
+    PREONBOARDING_SEARCH_ONLY_SELECTED("m_preonboarding_search_only_selected"),
+    NEW_ADDRESS_BAR_PICKER_V2_DISPLAYED_COUNT("m_aichat_new_address_bar_picker_v2_displayed_count"),
+    NEW_ADDRESS_BAR_PICKER_V2_DISPLAYED_DAILY("m_aichat_new_address_bar_picker_v2_displayed_daily"),
+    NEW_ADDRESS_BAR_PICKER_V2_CONFIRMED_COUNT("m_aichat_new_address_bar_picker_v2_confirmed_count"),
+    NEW_ADDRESS_BAR_PICKER_V2_CONFIRMED_DAILY("m_aichat_new_address_bar_picker_v2_confirmed_daily"),
+    AI_CHAT_DUCK_AI_DIRECT_NAVIGATION_COUNT("m_aichat_duck_ai_direct_navigation_count"),
+    AI_CHAT_DUCK_AI_DIRECT_NAVIGATION_DAILY("m_aichat_duck_ai_direct_navigation_daily"),
+    AI_CHAT_UNIFIED_INPUT_CHAT_HEADER_UPGRADE_TAPPED("m_aichat_unified_input_chat_header_upgrade_tapped"),
+    AI_CHAT_UNIFIED_INPUT_FREE_LABEL_SHOWN("m_aichat_unified_input_free_label_shown"),
     PREONBOARDING_SKIP_ONBOARDING_PRESSED("m_preonboarding_skip-onboarding-pressed"),
     PREONBOARDING_CONFIRM_SKIP_ONBOARDING_PRESSED("m_preonboarding_confirm-skip-onboarding-pressed"),
     PREONBOARDING_RESUME_ONBOARDING_PRESSED("m_preonboarding_resume-onboarding-pressed"),
@@ -53,6 +78,10 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     ONBOARDING_DAX_ALL_CTA_HIDDEN("m_odc_h"),
     ONBOARDING_DAX_CTA_OK_BUTTON("m_odc_ok"),
     ONBOARDING_DAX_CTA_DISMISS_BUTTON("m_onboarding_dax_cta_dismiss"),
+    SUBSCRIPTION_PROMO_MODAL_SKIPPED_ONBOARDING_SHOWN("m_subscription_promo_modal_skipped_onboarding_shown"),
+    SUBSCRIPTION_PROMO_MODAL_SKIPPED_ONBOARDING_SUBSCRIBE_CLICKED("m_subscription_promo_modal_skipped_onboarding_subscribe_clicked"),
+    SUBSCRIPTION_PROMO_MODAL_NUDGE_SHOWN("m_subscription_promo_modal_nudge_shown"),
+    SUBSCRIPTION_PROMO_MODAL_NUDGE_SUBSCRIBE_CLICKED("m_subscription_promo_modal_nudge_subscribe_clicked"),
 
     BROWSER_MENU_ALLOWLIST_ADD("mb_wla"),
     BROWSER_MENU_ALLOWLIST_REMOVE("mb_wlr"),
@@ -110,9 +139,15 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     LONG_PRESS_NEW_BACKGROUND_TAB("mlp_b"),
     LONG_PRESS_SHARE("mlp_s"),
     LONG_PRESS_COPY_URL("mlp_c"),
+    LONG_PRESS_COPY_LINK_TEXT("m_long_press_copy_link_text"),
     LONG_PRESS_OPEN_IMAGE_IN_BACKGROUND_TAB("mlp_ibt"),
+    LONG_PRESS_NEW_FIRE_TAB("m_long_press_new_fire_tab"),
+    FIRE_TABS_PROMO_TAB_SWITCHER_SHOWN("m_fire_tabs_promo_tab_switcher_shown"),
+    FIRE_TABS_PROMO_TAB_SWITCHER_DISMISSED("m_fire_tabs_promo_tab_switcher_dismissed"),
+    BROWSER_MODE_SWITCHED("m_browser_mode_switched"),
 
     SETTINGS_OPENED("ms"),
+    SETTINGS_OPENED_WITH_SUBSCRIPTION_AVAILABLE("m_subscription_settings_impression"),
     SETTINGS_THEME_OPENED("ms_t_o"),
     SETTINGS_THEME_TOGGLED_LIGHT("ms_tl"),
     SETTINGS_THEME_TOGGLED_DARK("ms_td"),
@@ -126,12 +161,17 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     SETTINGS_APP_LINKS_ASK_EVERY_TIME_SELECTED("ms_app_links_ask_every_time_setting_selected"),
     SETTINGS_APP_LINKS_ALWAYS_SELECTED("ms_app_links_always_setting_selected"),
     SETTINGS_APP_LINKS_NEVER_SELECTED("ms_app_links_never_setting_selected"),
+    SETTINGS_APP_LINKS_PRESSED_DAILY("ms_app_links_setting_pressed_daily"),
+    SETTINGS_APP_LINKS_ASK_EVERY_TIME_SELECTED_DAILY("ms_app_links_ask_every_time_setting_selected_daily"),
+    SETTINGS_APP_LINKS_ALWAYS_SELECTED_DAILY("ms_app_links_always_setting_selected_daily"),
+    SETTINGS_APP_LINKS_NEVER_SELECTED_DAILY("ms_app_links_never_setting_selected_daily"),
     SETTINGS_ADD_HOME_SCREEN_WIDGET_CLICKED("ms_add_home_screen_widget_clicked"),
     SETTINGS_DEFAULT_BROWSER_PRESSED("ms_default_browser_pressed"),
     SETTINGS_PRIVATE_SEARCH_PRESSED("ms_private_search_setting_pressed"),
     SETTINGS_GENERAL_PRESSED("ms_settings_general_pressed"),
     SETTINGS_WEB_TRACKING_PROTECTION_PRESSED("ms_web_tracking_protection_setting_pressed"),
     SETTINGS_ACCESSIBILITY_PRESSED("ms_accessibility_setting_pressed"),
+    SETTINGS_WHATS_NEW_PRESSED("ms_whats_new_setting_pressed"),
     SETTINGS_ABOUT_PRESSED("ms_about_setting_pressed"),
     SETTINGS_PASSWORDS_PRESSED("ms_passwords_pressed"),
     SETTINGS_SYNC_PRESSED("ms_sync_pressed"),
@@ -140,6 +180,7 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     SETTINGS_APPEARANCE_IS_FULL_URL_OPTION_TOGGLED("m_appearance_settings_is_full_url_option_toggled"),
     APPEARANCE_SETTINGS_IS_FULL_URL_ENABLED_DAILY("m_appearance_settings_is_full_url_enabled_daily"),
     SETTINGS_APPEARANCE_IS_TRACKER_COUNT_IN_TAB_SWITCHER_TOGGLED("m_appearance_settings_is_tracker_count_in_tab_switcher_toggled"),
+    SETTINGS_APPEARANCE_IS_TRACKER_COUNT_IN_ADDRESS_BAR_TOGGLED("m_appearance_settings_is_tracker_count_in_address_bar_toggled"),
     SETTINGS_APP_ICON_PRESSED("ms_app_icon_setting_pressed"),
     SETTINGS_ADDRESS_BAR_POSITION_PRESSED("ms_address_bar_position_setting_pressed"),
     SETTINGS_ADDRESS_BAR_POSITION_SELECTED_TOP("ms_address_bar_position_setting_selected_top"),
@@ -166,6 +207,7 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     SETTINGS_CLEAR_DUCK_AI_DATA_TOGGLED_ON("ms_clear_duck_ai_data_toggled_on"),
     SETTINGS_CLEAR_DUCK_AI_DATA_TOGGLED_OFF("ms_clear_duck_ai_data_toggled_off"),
     SETTINGS_GENERAL_APP_LAUNCH_PRESSED("m_settings_general_app_launch_pressed"),
+    SETTINGS_AFTER_INACTIVITY_TIMEOUT_CHANGED("m_settings_after_inactivity_timeout_changed"),
 
     SURVEY_CTA_SHOWN(pixelName = "mus_cs"),
     SURVEY_CTA_DISMISSED(pixelName = "mus_cd"),
@@ -207,10 +249,9 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     APP_FEEDBACK_DIALOG_USER_CANCELLED("mrp_f_d%d_c"),
 
     APP_LINKS_SNACKBAR_SHOWN("m_app_links_snackbar_shown"),
+    APP_LINKS_SNACKBAR_SHOWN_DAILY("app_links_snackbar_shown_daily"),
     APP_LINKS_SNACKBAR_OPEN_ACTION_PRESSED("m_app_links_snackbar_open_action_pressed"),
-
-    FEEDBACK_POSITIVE_SUBMISSION("mfbs_%s_submit"),
-    FEEDBACK_NEGATIVE_SUBMISSION("mfbs_%s_%s_%s"),
+    APP_LINKS_SNACKBAR_OPEN_ACTION_PRESSED_DAILY("app_links_snackbar_open_action_pressed_daily"),
 
     AUTOCOMPLETE_TOGGLED_OFF("m_autocomplete_recent_sites_toggled_off"),
     AUTOCOMPLETE_TOGGLED_ON("m_autocomplete_recent_sites_toggled_on"),
@@ -224,9 +265,6 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     AUTOCOMPLETE_RECENT_SITES_GENERAL_SETTINGS_TOGGLED_OFF("m_settings_general_recent_sites_off"),
     AUTOCOMPLETE_RECENT_SITES_GENERAL_SETTINGS_TOGGLED_ON("m_settings_general_recent_sites_on"),
 
-    AUTOCOMPLETE_BANNER_SHOWN("m_autocomplete_recent_sites_intro_message_displayed"),
-    AUTOCOMPLETE_BANNER_DISMISSED("m_autocomplete_recent_sites_intro_message_dismissed"),
-
     AUTOCOMPLETE_DISPLAYED_LOCAL_BOOKMARK("m_autocomplete_displayed_bookmark"),
     AUTOCOMPLETE_DISPLAYED_LOCAL_FAVORITE("m_autocomplete_displayed_favorite"),
     AUTOCOMPLETE_DISPLAYED_LOCAL_WEBSITE("m_autocomplete_displayed_website"),
@@ -236,6 +274,13 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
 
     AUTOCOMPLETE_RESULT_DELETED("m_autocomplete_result_deleted"),
     AUTOCOMPLETE_RESULT_DELETED_DAILY("m_autocomplete_result_deleted_daily"),
+    AUTOCOMPLETE_RESULT_DELETE_BUTTON_CLICKED("autocomplete_result_delete_button_clicked"),
+    AUTOCOMPLETE_RESULT_DELETE_BUTTON_CLICKED_DAILY("autocomplete_result_delete_button_clicked_daily"),
+
+    CHAT_SUGGESTIONS_GENERAL_SETTINGS_TOGGLED_ON_COUNT("m_aichat_settings_chat_suggestions_turned_on_count"),
+    CHAT_SUGGESTIONS_GENERAL_SETTINGS_TOGGLED_ON_DAILY("m_aichat_settings_chat_suggestions_turned_on_daily"),
+    CHAT_SUGGESTIONS_GENERAL_SETTINGS_TOGGLED_OFF_COUNT("m_aichat_settings_chat_suggestions_turned_off_count"),
+    CHAT_SUGGESTIONS_GENERAL_SETTINGS_TOGGLED_OFF_DAILY("m_aichat_settings_chat_suggestions_turned_off_daily"),
 
     SERP_REQUERY("rq_%s"),
 
@@ -246,11 +291,11 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     MENU_ACTION_REFRESH_PRESSED("m_nav_r_p"),
     MENU_ACTION_NEW_TAB_PRESSED_FROM_SERP("m_new_tab_open_from_serp"),
     MENU_ACTION_NEW_TAB_PRESSED_FROM_SITE("m_new_tab_open_from_website"),
-    MENU_ACTION_BOOKMARKS_PRESSED("m_navigation_menu_bookmarks"),
     MENU_ACTION_NAVIGATE_FORWARD_PRESSED("m_nav_nf_p"),
     MENU_ACTION_NAVIGATE_BACK_PRESSED("m_nav_nb_p"),
     MENU_ACTION_ADD_BOOKMARK_PRESSED("m_nav_ab_p"),
     MENU_ACTION_EDIT_BOOKMARK_PRESSED("m_nav_eb_p"),
+    MENU_ACTION_BOOKMARKS_PRESSED("m_nav_bookmarks_menu_item_pressed"),
     MENU_ACTION_ADD_FAVORITE_PRESSED("m_nav_af_p"),
     MENU_ACTION_REMOVE_FAVORITE_PRESSED("m_nav_rf_p"),
     MENU_ACTION_SHARE_PRESSED("m_nav_sh_p"),
@@ -265,6 +310,21 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     MENU_ACTION_DOWNLOADS_PRESSED("m_nav_downloads_menu_item_pressed"),
     MENU_ACTION_AUTOFILL_PRESSED("m_nav_autofill_menu_item_pressed"),
     MENU_ACTION_VPN_PRESSED("m_nav_vpn_menu_item_pressed"),
+
+    BROWSING_MENU_USED("m_browsing-menu_used"),
+    BROWSING_MENU_USED_UNIQUE("m_browsing-menu_used_unique"),
+    BROWSING_MENU_USED_DAILY("m_browsing-menu_used_daily"),
+    BROWSING_MENU_DISPLAYED("m_browsing-menu_displayed"),
+    BROWSING_MENU_DISPLAYED_NTP("m_browsing-menu_displayed_ntp"),
+    BROWSING_MENU_DISPLAYED_AICHAT("m_browsing-menu_displayed_aichat"),
+    BROWSING_MENU_DISPLAYED_CUSTOMTABS("m_browsing-menu_displayed_customtabs"),
+    BROWSING_MENU_DISPLAYED_ERROR("m_browsing-menu_displayed_error"),
+    BROWSING_MENU_DISMISSED("m_browsing-menu_dismissed"),
+    SHEET_MENU_AICHAT("m_sheet-menu_aichat"),
+    SHEET_MENU_PASSWORDS("m_sheet-menu_passwords"),
+    SHEET_MENU_NEW_DUCK_ADDRESS("m_sheet-menu_new-duck-address"),
+    SHEET_MENU_VPN("m_sheet-menu_vpn"),
+    SHEET_MENU_SETTINGS("m_sheet-menu_settings"),
 
     FIREPROOF_WEBSITE_ADDED("m_fw_a"),
     FIREPROOF_WEBSITE_REMOVE("m_fw_r"),
@@ -290,9 +350,12 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
 
     FIRE_DIALOG_PROMOTED_CLEAR_PRESSED("m_fdp_p"),
     FIRE_DIALOG_CLEAR_PRESSED("m_fd_p"),
+    FIRE_DIALOG_CLEAR_PRESSED_DAILY("m_fire_dialog_clear_pressed_daily"),
     FIRE_DIALOG_CANCEL("m_fd_c"),
     FIRE_DIALOG_ANIMATION("m_fd_a"),
-
+    FIRE_DIALOG_SHOWN("m_fire_dialog_shown"),
+    FIRE_DIALOG_CLEAR_SINGLE_TAB_PRESSED("m_fire_dialog_single_tab_clear_pressed"),
+    FIRE_DIALOG_CLEAR_SINGLE_TAB_PRESSED_DAILY("m_fire_dialog_single_tab_clear_pressed_daily"),
     FIRE_ANIMATION_SETTINGS_OPENED("m_fas_o"),
     FIRE_ANIMATION_NEW_SELECTED("m_fas_s"),
 
@@ -314,7 +377,7 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     REMOTE_MESSAGE_ACTION_CLICKED("m_remote_message_action_clicked"),
     REMOTE_MESSAGE_SHARED("m_remote_message_share"),
 
-    PRIVACY_PRO_IS_ENABLED_AND_ELIGIBLE("m_privacy-pro_is-enabled"),
+    SUBSCRIPTION_IS_ENABLED_AND_ELIGIBLE("m_privacy-pro_is-enabled"),
 
     SSL_CERTIFICATE_WARNING_CLOSE_PRESSED("m_certificate_warning_leave_clicked"),
     SSL_CERTIFICATE_WARNING_ADVANCED_PRESSED("m_certificate_warning_advanced_clicked"),
@@ -340,6 +403,7 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     ADDRESS_BAR_WEBSITE_CLOSED("m_addressbar_focus_close_website"),
     ADDRESS_BAR_SERP_CLOSED("m_addressbar_focus_close_serp"),
     ADDRESS_BAR_NTP_FOCUSED("m_addressbar_focus_ntp"),
+    ADDRESS_BAR_AICHAT_CLICKED("m_addressbar_click_aichat"),
 
     KEYBOARD_GO_NEW_TAB_CLICKED("m_keyboard_go_click_ntp"),
     KEYBOARD_GO_WEBSITE_CLICKED("m_keyboard_go_click_website"),
@@ -425,7 +489,25 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
 
     URI_LOADED("m_uri_loaded"),
 
+    PRODUCT_TELEMETRY_SURFACE_SERP_LOADED("m_product_telemetry_surface_usage_serp"),
+    PRODUCT_TELEMETRY_SURFACE_SERP_LOADED_DAILY("m_product_telemetry_surface_usage_serp_daily"),
+    PRODUCT_TELEMETRY_SURFACE_WEBSITE_LOADED("m_product_telemetry_surface_usage_website"),
+    PRODUCT_TELEMETRY_SURFACE_WEBSITE_LOADED_DAILY("m_product_telemetry_surface_usage_website_daily"),
+    PRODUCT_TELEMETRY_SURFACE_LANDSCAPE_ORIENTATION_USED("m_product_telemetry_surface_usage_landscape"),
+    PRODUCT_TELEMETRY_SURFACE_LANDSCAPE_ORIENTATION_USED_DAILY("m_product_telemetry_surface_usage_landscape_daily"),
+    PRODUCT_TELEMETRY_SURFACE_TAB_MANAGER_CLICKED("m_product_telemetry_surface_usage_tab_manager"),
+    PRODUCT_TELEMETRY_SURFACE_TAB_MANAGER_CLICKED_DAILY("m_product_telemetry_surface_usage_tab_manager_daily"),
+    PRODUCT_TELEMETRY_SURFACE_DATA_CLEARING("m_product_telemetry_surface_usage_data_clearing"),
+    PRODUCT_TELEMETRY_SURFACE_DATA_CLEARING_DAILY("m_product_telemetry_surface_usage_data_clearing_daily"),
+    PRODUCT_TELEMETRY_SURFACE_MENU_OPENED("m_product_telemetry_surface_usage_menu"),
+    PRODUCT_TELEMETRY_SURFACE_MENU_OPENED_DAILY("m_product_telemetry_surface_usage_menu_daily"),
+    PRODUCT_TELEMETRY_SURFACE_SETTINGS_OPENED("m_product_telemetry_surface_usage_settings"),
+    PRODUCT_TELEMETRY_SURFACE_SETTINGS_OPENED_DAILY("m_product_telemetry_surface_usage_settings_daily"),
+    PRODUCT_TELEMETRY_SURFACE_DAU("m_product_telemetry_surface_usage_dau"),
+    PRODUCT_TELEMETRY_SURFACE_DAU_DAILY("m_product_telemetry_surface_usage_dau_daily"),
+
     ERROR_PAGE_SHOWN("m_errorpageshown"),
+    ERROR_CODE_PIXEL("m_errorpageshown_code"),
 
     APP_VERSION_AT_SEARCH_TIME("app_version_at_search_time"),
 
@@ -458,4 +540,18 @@ enum class AppPixelName(override val pixelName: String) : Pixel.PixelName {
     BROWSER_NAV_TABS_PRESSED("m_browser_nav_tabs_pressed"),
     BROWSER_NAV_TABS_LONG_PRESSED("m_browser_nav_tabs_long_pressed"),
     BROWSER_NAV_MENU_PRESSED("m_browser_nav_menu_pressed"),
+
+    TIMEOUT_WAITING_FOR_APP_REFERRER("timeout_waiting_for_referrer"),
+
+    DATA_CLEARING_AUTOMATIC_OPTIONS_UPDATED("m_automatic_data_clearing_options_updated"),
+
+    GET_DESKTOP_BROWSER_COMPLETE_SETUP_IMPRESSION("m_get_desktop_browser_complete_setup_impression"),
+    GET_DESKTOP_BROWSER_CLICKED("m_get_desktop_browser_clicked"),
+    GET_DESKTOP_BROWSER_DISMISSED("m_get_desktop_browser_dismissed"),
+    GET_DESKTOP_BROWSER_SHARE_DOWNLOAD_LINK_CLICK("m_get_desktop_browser_share_download_link_click"),
+    GET_DESKTOP_BROWSER_LINK_CLICK("m_get_desktop_browser_link_click"),
+
+    AICHAT_VOICE_SESSION_DIGITAL_ASSISTANT_STARTED("m_aichat_voice_session_digital-assistant_started"),
+
+    WEBVIEW_SESSION_LARGE_BYTES("webview_session_large_bytes"),
 }

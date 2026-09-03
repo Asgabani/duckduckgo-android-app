@@ -18,14 +18,18 @@ package com.duckduckgo.pir.impl.common
 
 import com.duckduckgo.common.test.CoroutineTestRule
 import com.duckduckgo.common.utils.CurrentTimeProvider
-import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerManualScanCompleted
+import com.duckduckgo.pir.impl.common.PirJob.RunType
 import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerRecordEmailConfirmationCompleted
 import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerRecordEmailConfirmationNeeded
 import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerRecordEmailConfirmationStarted
-import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerRecordOptOutCompleted
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerRecordOptOutFailed
 import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerRecordOptOutStarted
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerRecordOptOutSubmitted
 import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerScanActionSucceeded
-import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerScheduledScanCompleted
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerScanFailed
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerScanStarted
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerScanSuccess
+import com.duckduckgo.pir.impl.common.PirRunStateHandler.PirRunState.BrokerStepInvalidEvent
 import com.duckduckgo.pir.impl.models.AddressCityState
 import com.duckduckgo.pir.impl.models.Broker
 import com.duckduckgo.pir.impl.models.ExtractedProfile
@@ -33,26 +37,34 @@ import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobR
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord.EmailData
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord.JobAttemptData
 import com.duckduckgo.pir.impl.models.scheduling.JobRecord.EmailConfirmationJobRecord.LinkFetchData
+import com.duckduckgo.pir.impl.models.scheduling.JobRecord.OptOutJobRecord
+import com.duckduckgo.pir.impl.models.scheduling.JobRecord.OptOutJobRecord.OptOutJobStatus
 import com.duckduckgo.pir.impl.pixels.PirPixelSender
+import com.duckduckgo.pir.impl.pixels.PirStage.OTHER
 import com.duckduckgo.pir.impl.scheduling.JobRecordUpdater
+import com.duckduckgo.pir.impl.scripts.models.BrokerAction
 import com.duckduckgo.pir.impl.scripts.models.PirSuccessResponse.ExtractedResponse
 import com.duckduckgo.pir.impl.scripts.models.PirSuccessResponse.ExtractedResponse.ScriptAddressCityState
 import com.duckduckgo.pir.impl.scripts.models.PirSuccessResponse.ExtractedResponse.ScriptExtractedProfile
 import com.duckduckgo.pir.impl.scripts.models.PirSuccessResponse.NavigateResponse
+import com.duckduckgo.pir.impl.scripts.models.asActionType
 import com.duckduckgo.pir.impl.store.PirEventsRepository
 import com.duckduckgo.pir.impl.store.PirRepository
 import com.duckduckgo.pir.impl.store.PirSchedulingRepository
 import com.duckduckgo.pir.impl.store.db.BrokerScanEventType.BROKER_ERROR
+import com.duckduckgo.pir.impl.store.db.BrokerScanEventType.BROKER_STARTED
 import com.duckduckgo.pir.impl.store.db.BrokerScanEventType.BROKER_SUCCESS
 import com.duckduckgo.pir.impl.store.db.EmailConfirmationEventType.EMAIL_CONFIRMATION_FAILED
 import com.duckduckgo.pir.impl.store.db.EmailConfirmationEventType.EMAIL_CONFIRMATION_SUCCESS
 import com.duckduckgo.pir.impl.store.db.PirBrokerScanLog
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
@@ -179,20 +191,54 @@ class RealPirRunStateHandlerTest {
         )
 
     @Test
-    fun whenHandleBrokerManualScanCompletedWithSuccessThenSavesLogsAndReportsPixel() =
+    fun whenHandleBrokerManualScanStartedThenSavesLogsAndReportsPixel() =
         runTest {
             val state =
-                BrokerManualScanCompleted(
+                BrokerScanStarted(
+                    broker = testBroker,
+                    eventTimeInMillis = testEventTimeInMillis,
+                )
+            testee.handleState(state)
+
+            verify(mockPixelSender).reportScanStarted(
+                brokerUrl = testBroker.url,
+            )
+            verify(mockEventsRepository).saveBrokerScanLog(
+                PirBrokerScanLog(
+                    eventTimeInMillis = testEventTimeInMillis,
                     brokerName = testBrokerName,
+                    eventType = BROKER_STARTED,
+                ),
+            )
+            verifyNoMoreInteractions(mockEventsRepository)
+            verifyNoMoreInteractions(mockPixelSender)
+        }
+
+    @Test
+    fun whenHandleBrokerManualScanCompletedWithSuccessWithNoMatchThenSavesLogsAndReportsPixel() =
+        runTest {
+            val state =
+                BrokerScanSuccess(
+                    broker = testBroker,
                     profileQueryId = testProfileQueryId,
                     startTimeInMillis = testStartTimeInMillis,
                     eventTimeInMillis = testEventTimeInMillis,
                     totalTimeMillis = testTotalTimeMillis,
-                    isSuccess = true,
+                    isManualRun = true,
+                    lastAction = BrokerAction.Navigate(id = "1234", url = "hello.com"),
                 )
-
+            whenever(mockRepository.getExtractedProfiles(any(), any())).thenReturn(emptyList())
             testee.handleState(state)
 
+            verify(mockPixelSender).reportScanNoMatch(
+                brokerUrl = testBroker.url,
+                brokerVersion = testBroker.version,
+                durationMs = testTotalTimeMillis,
+                inManualStarted = true,
+                parentUrl = "",
+                actionId = "1234",
+                actionType = "navigate",
+            )
             verify(mockEventsRepository).saveBrokerScanLog(
                 PirBrokerScanLog(
                     eventTimeInMillis = testEventTimeInMillis,
@@ -207,9 +253,46 @@ class RealPirRunStateHandlerTest {
                 endTimeInMillis = testEventTimeInMillis,
                 isSuccess = true,
             )
-            verify(mockPixelSender).reportBrokerScanCompleted(
+            verifyNoInteractions(mockJobRecordUpdater)
+        }
+
+    @Test
+    fun whenHandleBrokerManualScanCompletedWithSuccessWithMatchesThenSavesLogsAndReportsPixel() =
+        runTest {
+            val state =
+                BrokerScanSuccess(
+                    broker = testBroker,
+                    profileQueryId = testProfileQueryId,
+                    startTimeInMillis = testStartTimeInMillis,
+                    eventTimeInMillis = testEventTimeInMillis,
+                    totalTimeMillis = testTotalTimeMillis,
+                    isManualRun = true,
+                    lastAction = BrokerAction.Navigate(id = "1234", url = "hello.com"),
+                )
+            whenever(mockRepository.getExtractedProfiles(any(), any())).thenReturn(
+                listOf(testExtractedProfile),
+            )
+            testee.handleState(state)
+
+            verify(mockPixelSender).reportScanMatches(
+                brokerUrl = testBroker.url,
+                durationMs = testTotalTimeMillis,
+                inManualStarted = true,
+                parentUrl = "",
+                totalMatches = 1,
+            )
+            verify(mockEventsRepository).saveBrokerScanLog(
+                PirBrokerScanLog(
+                    eventTimeInMillis = testEventTimeInMillis,
+                    brokerName = testBrokerName,
+                    eventType = BROKER_SUCCESS,
+                ),
+            )
+            verify(mockEventsRepository).saveScanCompletedBroker(
                 brokerName = testBrokerName,
-                totalTimeInMillis = testTotalTimeMillis,
+                profileQueryId = testProfileQueryId,
+                startTimeInMillis = testStartTimeInMillis,
+                endTimeInMillis = testEventTimeInMillis,
                 isSuccess = true,
             )
             verifyNoInteractions(mockJobRecordUpdater)
@@ -219,95 +302,30 @@ class RealPirRunStateHandlerTest {
     fun whenHandleBrokerManualScanCompletedWithFailureThenSavesErrorLogsAndReportsPixel() =
         runTest {
             val state =
-                BrokerManualScanCompleted(
-                    brokerName = testBrokerName,
+                BrokerScanFailed(
+                    broker = testBroker,
                     profileQueryId = testProfileQueryId,
                     startTimeInMillis = testStartTimeInMillis,
                     eventTimeInMillis = testEventTimeInMillis,
                     totalTimeMillis = testTotalTimeMillis,
-                    isSuccess = false,
+                    isManualRun = true,
+                    errorCategory = "network-error",
+                    errorDetails = "Error details",
+                    failedAction = BrokerAction.Navigate(id = "123243", url = "test.com"),
                 )
 
             testee.handleState(state)
 
-            verify(mockEventsRepository).saveBrokerScanLog(
-                PirBrokerScanLog(
-                    eventTimeInMillis = testEventTimeInMillis,
-                    brokerName = testBrokerName,
-                    eventType = BROKER_ERROR,
-                ),
-            )
-            verify(mockEventsRepository).saveScanCompletedBroker(
-                brokerName = testBrokerName,
-                profileQueryId = testProfileQueryId,
-                startTimeInMillis = testStartTimeInMillis,
-                endTimeInMillis = testEventTimeInMillis,
-                isSuccess = false,
-            )
-            verify(mockPixelSender).reportBrokerScanCompleted(
-                brokerName = testBrokerName,
-                totalTimeInMillis = testTotalTimeMillis,
-                isSuccess = false,
-            )
-            verify(mockJobRecordUpdater).updateScanError(testBrokerName, testProfileQueryId)
-        }
-
-    @Test
-    fun whenHandleBrokerScheduledScanCompletedWithSuccessThenSavesLogsAndReportsPixel() =
-        runTest {
-            val state =
-                BrokerScheduledScanCompleted(
-                    brokerName = testBrokerName,
-                    profileQueryId = testProfileQueryId,
-                    startTimeInMillis = testStartTimeInMillis,
-                    eventTimeInMillis = testEventTimeInMillis,
-                    totalTimeMillis = testTotalTimeMillis,
-                    isSuccess = true,
-                )
-
-            testee.handleState(state)
-
-            verify(mockPixelSender).reportBrokerScanCompleted(
-                brokerName = testBrokerName,
-                totalTimeInMillis = testTotalTimeMillis,
-                isSuccess = true,
-            )
-            verify(mockEventsRepository).saveBrokerScanLog(
-                PirBrokerScanLog(
-                    eventTimeInMillis = testEventTimeInMillis,
-                    brokerName = testBrokerName,
-                    eventType = BROKER_SUCCESS,
-                ),
-            )
-            verify(mockEventsRepository).saveScanCompletedBroker(
-                brokerName = testBrokerName,
-                profileQueryId = testProfileQueryId,
-                startTimeInMillis = testStartTimeInMillis,
-                endTimeInMillis = testEventTimeInMillis,
-                isSuccess = true,
-            )
-            verifyNoInteractions(mockJobRecordUpdater)
-        }
-
-    @Test
-    fun whenHandleBrokerScheduledScanCompletedWithFailureThenSavesErrorLogsAndReportsPixel() =
-        runTest {
-            val state =
-                BrokerScheduledScanCompleted(
-                    brokerName = testBrokerName,
-                    profileQueryId = testProfileQueryId,
-                    startTimeInMillis = testStartTimeInMillis,
-                    eventTimeInMillis = testEventTimeInMillis,
-                    totalTimeMillis = testTotalTimeMillis,
-                    isSuccess = false,
-                )
-
-            testee.handleState(state)
-
-            verify(mockPixelSender).reportBrokerScanCompleted(
-                brokerName = testBrokerName,
-                totalTimeInMillis = testTotalTimeMillis,
-                isSuccess = false,
+            verify(mockPixelSender).reportScanError(
+                brokerUrl = testBroker.url,
+                brokerVersion = testBroker.version,
+                durationMs = testTotalTimeMillis,
+                errorCategory = "network-error",
+                errorDetails = "Error details",
+                inManualStarted = true,
+                parentUrl = "",
+                actionId = "123243",
+                actionType = "navigate",
             )
             verify(mockEventsRepository).saveBrokerScanLog(
                 PirBrokerScanLog(
@@ -337,7 +355,7 @@ class RealPirRunStateHandlerTest {
                 )
             val state =
                 BrokerScanActionSucceeded(
-                    brokerName = testBrokerName,
+                    broker = testBroker,
                     profileQueryId = testProfileQueryId,
                     pirSuccessResponse = extractedResponse,
                 )
@@ -364,6 +382,8 @@ class RealPirRunStateHandlerTest {
                     email = "john@example.com",
                     fullName = "John Michael Doe",
                 )
+            whenever(mockJobRecordUpdater.markReappearedOptOutJobRecords(any(), any(), any()))
+                .thenReturn(emptyList())
 
             testee.handleState(state)
 
@@ -383,7 +403,109 @@ class RealPirRunStateHandlerTest {
                 testBrokerName,
                 testProfileQueryId,
             )
-            inOrder.verify(mockRepository).saveNewExtractedProfiles(listOf(expectedExtractedProfile))
+            inOrder.verify(mockRepository).saveExtractedProfiles(listOf(expectedExtractedProfile))
+        }
+
+    @Test
+    fun whenHandleBrokerScanActionSucceededWithExtrasThenSavesProfileAndAddressExtras() =
+        runTest {
+            val extractedResponse =
+                ExtractedResponse(
+                    actionID = "extract123",
+                    actionType = "extract",
+                    response = listOf(
+                        testScriptExtractedProfile.copy(
+                            addresses = listOf(
+                                ScriptAddressCityState(
+                                    city = "New York",
+                                    state = "NY",
+                                    fullAddress = "123 Main St",
+                                    extras = mapOf("street" to "123 Main St", "zip" to "10001"),
+                                ),
+                            ),
+                            extras = mapOf("county" to "New York County"),
+                        ),
+                    ),
+                )
+            val state =
+                BrokerScanActionSucceeded(
+                    broker = testBroker,
+                    profileQueryId = testProfileQueryId,
+                    pirSuccessResponse = extractedResponse,
+                )
+            whenever(mockJobRecordUpdater.markReappearedOptOutJobRecords(any(), any(), any()))
+                .thenReturn(emptyList())
+
+            testee.handleState(state)
+
+            val captor = argumentCaptor<List<ExtractedProfile>>()
+            verify(mockRepository).saveExtractedProfiles(captor.capture())
+            val savedProfile = captor.firstValue.single()
+            assertEquals(mapOf("county" to "New York County"), savedProfile.extras)
+            assertEquals(mapOf("street" to "123 Main St", "zip" to "10001"), savedProfile.addresses.single().extras)
+        }
+
+    @Test
+    fun whenHandleBrokerScanActionSucceededWithReappearedProfileThenMarksReappearedAndReportsPixelPerRevertedRecord() =
+        runTest {
+            val extractedResponse =
+                ExtractedResponse(
+                    actionID = "extract123",
+                    actionType = "extract",
+                    response = listOf(testScriptExtractedProfile),
+                )
+            val state =
+                BrokerScanActionSucceeded(
+                    broker = testBroker,
+                    profileQueryId = testProfileQueryId,
+                    pirSuccessResponse = extractedResponse,
+                )
+            val expectedExtractedProfile =
+                ExtractedProfile(
+                    profileUrl = "https://example.com/profile/123",
+                    profileQueryId = testProfileQueryId,
+                    brokerName = testBrokerName,
+                    name = "John Doe",
+                    alternativeNames = listOf("Johnny", "J. Doe"),
+                    age = "30",
+                    addresses =
+                    listOf(
+                        AddressCityState(
+                            city = "New York",
+                            state = "NY",
+                            fullAddress = "123 Main St",
+                        ),
+                    ),
+                    phoneNumbers = listOf("555-1234"),
+                    relatives = listOf("Jane Doe"),
+                    identifier = "id123",
+                    reportId = "report123",
+                    email = "john@example.com",
+                    fullName = "John Michael Doe",
+                )
+            val revertedRecord =
+                OptOutJobRecord(
+                    brokerName = testBrokerName,
+                    userProfileId = testProfileQueryId,
+                    extractedProfileId = testExtractedProfileId,
+                    status = OptOutJobStatus.REQUESTED,
+                )
+            whenever(
+                mockJobRecordUpdater.markReappearedOptOutJobRecords(
+                    newExtractedProfiles = listOf(expectedExtractedProfile),
+                    brokerName = testBrokerName,
+                    profileQueryId = testProfileQueryId,
+                ),
+            ).thenReturn(listOf(revertedRecord))
+
+            testee.handleState(state)
+
+            verify(mockJobRecordUpdater).markReappearedOptOutJobRecords(
+                newExtractedProfiles = listOf(expectedExtractedProfile),
+                brokerName = testBrokerName,
+                profileQueryId = testProfileQueryId,
+            )
+            verify(mockPixelSender).reportBrokerOptOutProfileReappeared(testBroker.url)
         }
 
     @Test
@@ -397,7 +519,7 @@ class RealPirRunStateHandlerTest {
                 )
             val state =
                 BrokerScanActionSucceeded(
-                    brokerName = testBrokerName,
+                    broker = testBroker,
                     profileQueryId = testProfileQueryId,
                     pirSuccessResponse = extractedResponse,
                 )
@@ -419,7 +541,7 @@ class RealPirRunStateHandlerTest {
                 )
             val state =
                 BrokerScanActionSucceeded(
-                    brokerName = testBrokerName,
+                    broker = testBroker,
                     profileQueryId = testProfileQueryId,
                     pirSuccessResponse = navigateResponse,
                 )
@@ -435,28 +557,46 @@ class RealPirRunStateHandlerTest {
         runTest {
             val state =
                 BrokerRecordOptOutStarted(
-                    brokerName = testBrokerName,
+                    broker = testBroker,
                     extractedProfile = testExtractedProfile,
+                    attemptId = "c9982ded-021a-4251-9e03-2c58b130410f",
                 )
 
             testee.handleState(state)
 
             verify(mockJobRecordUpdater).markOptOutAsAttempted(testExtractedProfileId)
-            verify(mockPixelSender).reportOptOutStarted(brokerName = testBrokerName)
+            verify(mockPixelSender).reportOptOutStageStart(
+                brokerUrl = testBroker.url,
+                parentUrl = testBroker.parent.orEmpty(),
+            )
+            verifyNoMoreInteractions(mockPixelSender)
         }
 
     @Test
     fun whenHandleBrokerRecordOptOutCompletedWithSuccessThenUpdatesRecordAndReportsPixel() =
         runTest {
             val state =
-                BrokerRecordOptOutCompleted(
-                    brokerName = testBrokerName,
+                BrokerRecordOptOutSubmitted(
+                    broker = testBroker,
                     extractedProfile = testExtractedProfile,
                     startTimeInMillis = testStartTimeInMillis,
                     endTimeInMillis = testEventTimeInMillis,
-                    isSubmitSuccess = true,
+                    attemptId = "c9982ded-021a-4251-9e03-2c58b130410f",
+                    emailPattern = "ep15",
                 )
-
+            whenever(mockRepository.getBrokerForName(testBrokerName)).thenReturn(testBroker)
+            whenever(mockJobRecordUpdater.updateOptOutRequested(any())).thenReturn(
+                OptOutJobRecord(
+                    extractedProfileId = 789L,
+                    brokerName = testBrokerName,
+                    userProfileId = 123L,
+                    status = OptOutJobStatus.REQUESTED,
+                    attemptCount = 2,
+                    lastOptOutAttemptDateInMillis = 1000L,
+                    optOutRequestedDateInMillis = 2000L,
+                    optOutRemovedDateInMillis = 0L,
+                ),
+            )
             testee.handleState(state)
 
             verify(mockJobRecordUpdater).updateOptOutRequested(testExtractedProfileId)
@@ -467,10 +607,12 @@ class RealPirRunStateHandlerTest {
                 endTimeInMillis = testEventTimeInMillis,
                 isSubmitSuccess = true,
             )
-            verify(mockPixelSender).reportOptOutCompleted(
-                brokerName = testBrokerName,
-                totalTimeInMillis = testEventTimeInMillis - testStartTimeInMillis,
-                isSuccess = true,
+            verify(mockPixelSender).reportOptOutSubmitted(
+                brokerUrl = testBroker.url,
+                parent = "",
+                durationMs = testEventTimeInMillis - testStartTimeInMillis,
+                optOutAttemptCount = 2,
+                emailPattern = state.emailPattern,
             )
         }
 
@@ -478,14 +620,32 @@ class RealPirRunStateHandlerTest {
     fun whenHandleBrokerRecordOptOutCompletedWithFailureThenUpdatesRecordAndReportsPixel() =
         runTest {
             val state =
-                BrokerRecordOptOutCompleted(
-                    brokerName = testBrokerName,
+                BrokerRecordOptOutFailed(
+                    broker = testBroker,
                     extractedProfile = testExtractedProfile,
                     startTimeInMillis = testStartTimeInMillis,
                     endTimeInMillis = testEventTimeInMillis,
-                    isSubmitSuccess = false,
+                    attemptId = "c9982ded-021a-4251-9e03-2c58b130410f",
+                    failedAction = BrokerAction.Navigate(
+                        id = "fail82ded-021a-4251-9e03-2c58b130410f",
+                        url = "https://example.com/fail",
+                    ),
+                    stage = OTHER,
+                    emailPattern = "ep15",
                 )
-
+            whenever(mockRepository.getBrokerForName(testBrokerName)).thenReturn(testBroker)
+            whenever(mockJobRecordUpdater.updateOptOutError(any())).thenReturn(
+                OptOutJobRecord(
+                    extractedProfileId = 789L,
+                    brokerName = testBrokerName,
+                    userProfileId = 123L,
+                    status = OptOutJobStatus.ERROR,
+                    attemptCount = 2,
+                    lastOptOutAttemptDateInMillis = 1000L,
+                    optOutRequestedDateInMillis = 2000L,
+                    optOutRemovedDateInMillis = 0L,
+                ),
+            )
             testee.handleState(state)
 
             verify(mockJobRecordUpdater).updateOptOutError(testExtractedProfileId)
@@ -496,10 +656,16 @@ class RealPirRunStateHandlerTest {
                 endTimeInMillis = testEventTimeInMillis,
                 isSubmitSuccess = false,
             )
-            verify(mockPixelSender).reportOptOutCompleted(
-                brokerName = testBrokerName,
-                totalTimeInMillis = testEventTimeInMillis - testStartTimeInMillis,
-                isSuccess = false,
+            verify(mockPixelSender).reportOptOutFailed(
+                brokerUrl = testBroker.url,
+                parent = "",
+                brokerJsonVersion = testBroker.version,
+                durationMs = testEventTimeInMillis - testStartTimeInMillis,
+                stage = state.stage,
+                tries = 2,
+                emailPattern = state.emailPattern,
+                actionId = state.failedAction.id,
+                actionType = state.failedAction.asActionType(),
             )
         }
 
@@ -508,10 +674,12 @@ class RealPirRunStateHandlerTest {
         runTest {
             val state =
                 BrokerRecordEmailConfirmationNeeded(
-                    brokerName = testBrokerName,
+                    broker = testBroker,
                     extractedProfile = testExtractedProfile,
                     attemptId = "c9982ded-021a-4251-9e03-2c58b130410f",
                     lastActionId = "hello82ded-021a-4251-9e03-2c58b130410f",
+                    durationMs = testTotalTimeMillis,
+                    currentActionAttemptCount = 1,
                 )
             whenever(mockRepository.getBrokerForName(testBrokerName)).thenReturn(testBroker)
 
@@ -527,10 +695,35 @@ class RealPirRunStateHandlerTest {
             verify(mockPixelSender).reportStagePendingEmailConfirmation(
                 brokerUrl = testBroker.url,
                 brokerVersion = testBroker.version,
-                attemptId = "c9982ded-021a-4251-9e03-2c58b130410f",
                 actionId = "hello82ded-021a-4251-9e03-2c58b130410f",
-                durationMs = 0L,
-                tries = 0,
+                durationMs = testTotalTimeMillis,
+                tries = 1,
+            )
+        }
+
+    @Test
+    fun whenHandleBrokerRecordEmailConfirmationNeededAndExtractedProfileEmailEmptyThenUsesGeneratedEmail() =
+        runTest {
+            val state =
+                BrokerRecordEmailConfirmationNeeded(
+                    broker = testBroker,
+                    extractedProfile = testExtractedProfile.copy(email = ""),
+                    attemptId = "c9982ded-021a-4251-9e03-2c58b130410f",
+                    lastActionId = "hello82ded-021a-4251-9e03-2c58b130410f",
+                    durationMs = testTotalTimeMillis,
+                    currentActionAttemptCount = 1,
+                    generatedEmail = "generated@duck.com",
+                )
+            whenever(mockRepository.getBrokerForName(testBrokerName)).thenReturn(testBroker)
+
+            testee.handleState(state)
+
+            verify(mockJobRecordUpdater).markOptOutAsWaitingForEmailConfirmation(
+                profileQueryId = testProfileQueryId,
+                extractedProfileId = testExtractedProfileId,
+                brokerName = testBrokerName,
+                email = "generated@duck.com",
+                attemptId = "c9982ded-021a-4251-9e03-2c58b130410f",
             )
         }
 
@@ -539,7 +732,7 @@ class RealPirRunStateHandlerTest {
         runTest {
             val state =
                 BrokerRecordEmailConfirmationStarted(
-                    brokerName = testBrokerName,
+                    broker = testBroker,
                     extractedProfileId = testExtractedProfileId,
                     firstActionId = "first82ded-021a-4251-9e03-2c58b130410f",
                 )
@@ -555,7 +748,6 @@ class RealPirRunStateHandlerTest {
             verify(mockPixelSender).reportEmailConfirmationAttemptStart(
                 brokerUrl = testBroker.url,
                 brokerVersion = testBroker.version,
-                attemptId = testEmailConfirmationJob.emailData.attemptId,
                 actionId = state.firstActionId,
                 attemptNumber = testEmailConfirmationJob.jobAttemptData.jobAttemptCount,
             )
@@ -568,11 +760,13 @@ class RealPirRunStateHandlerTest {
         runTest {
             val state =
                 BrokerRecordEmailConfirmationCompleted(
-                    brokerName = testBrokerName,
-                    extractedProfileId = testExtractedProfileId,
+                    broker = testBroker,
+                    extractedProfile = testExtractedProfile,
                     isSuccess = true,
                     lastActionId = "last82ded-021a-4251-9e03-2c58b130410f",
                     totalTimeMillis = 1000L,
+                    emailPattern = "",
+                    attemptId = "attemptid-123",
                 )
             whenever(mockRepository.getBrokerForName(testBrokerName)).thenReturn(testBroker)
             whenever(mockSchedulingRepository.getEmailConfirmationJob(testExtractedProfileId)).thenReturn(testEmailConfirmationJob)
@@ -582,7 +776,6 @@ class RealPirRunStateHandlerTest {
             verify(mockPixelSender).reportEmailConfirmationAttemptSuccess(
                 brokerUrl = testBroker.url,
                 brokerVersion = testBroker.version,
-                attemptId = testEmailConfirmationJob.emailData.attemptId,
                 actionId = state.lastActionId,
                 attemptNumber = testEmailConfirmationJob.jobAttemptData.jobAttemptCount,
                 durationMs = state.totalTimeMillis,
@@ -599,6 +792,13 @@ class RealPirRunStateHandlerTest {
                 EMAIL_CONFIRMATION_SUCCESS,
                 testBrokerName,
             )
+            verify(mockPixelSender).reportOptOutSubmitted(
+                brokerUrl = testBroker.url,
+                parent = "",
+                durationMs = state.totalTimeMillis,
+                optOutAttemptCount = testEmailConfirmationJob.jobAttemptData.jobAttemptCount,
+                emailPattern = state.emailPattern,
+            )
             verifyNoMoreInteractions(mockPixelSender)
             verifyNoMoreInteractions(mockJobRecordUpdater)
         }
@@ -608,11 +808,13 @@ class RealPirRunStateHandlerTest {
         runTest {
             val state =
                 BrokerRecordEmailConfirmationCompleted(
-                    brokerName = testBrokerName,
-                    extractedProfileId = testExtractedProfileId,
+                    broker = testBroker,
+                    extractedProfile = testExtractedProfile,
                     isSuccess = false,
                     lastActionId = "last82ded-021a-4251-9e03-2c58b130410f",
                     totalTimeMillis = 1000L,
+                    attemptId = "attemptid-123",
+                    emailPattern = "",
                 )
             whenever(mockRepository.getBrokerForName(testBrokerName)).thenReturn(testBroker)
             whenever(mockJobRecordUpdater.recordEmailConfirmationFailed(any(), any())).thenReturn(testEmailConfirmationJob)
@@ -627,7 +829,6 @@ class RealPirRunStateHandlerTest {
             verify(mockPixelSender).reportEmailConfirmationAttemptFailed(
                 brokerUrl = testBroker.url,
                 brokerVersion = testBroker.version,
-                attemptId = testEmailConfirmationJob.emailData.attemptId,
                 actionId = state.lastActionId,
                 attemptNumber = testEmailConfirmationJob.jobAttemptData.jobAttemptCount,
                 durationMs = state.totalTimeMillis,
@@ -639,5 +840,73 @@ class RealPirRunStateHandlerTest {
             )
             verifyNoMoreInteractions(mockPixelSender)
             verifyNoMoreInteractions(mockJobRecordUpdater)
+        }
+
+    @Test
+    fun whenHandleBrokerStepInvalidEventWithManualRunTypeThenReportsScanInvalidEvent() =
+        runTest {
+            val state = BrokerStepInvalidEvent(
+                broker = testBroker,
+                runType = RunType.MANUAL,
+            )
+
+            testee.handleState(state)
+
+            verify(mockPixelSender).reportScanInvalidEvent(
+                brokerUrl = testBroker.url,
+                brokerVersion = testBroker.version,
+            )
+            verifyNoMoreInteractions(mockPixelSender)
+        }
+
+    @Test
+    fun whenHandleBrokerStepInvalidEventWithScheduledRunTypeThenReportsScanInvalidEvent() =
+        runTest {
+            val state = BrokerStepInvalidEvent(
+                broker = testBroker,
+                runType = RunType.SCHEDULED,
+            )
+
+            testee.handleState(state)
+
+            verify(mockPixelSender).reportScanInvalidEvent(
+                brokerUrl = testBroker.url,
+                brokerVersion = testBroker.version,
+            )
+            verifyNoMoreInteractions(mockPixelSender)
+        }
+
+    @Test
+    fun whenHandleBrokerStepInvalidEventWithOptOutRunTypeThenReportsOptOutInvalidEvent() =
+        runTest {
+            val state = BrokerStepInvalidEvent(
+                broker = testBroker,
+                runType = RunType.OPTOUT,
+            )
+
+            testee.handleState(state)
+
+            verify(mockPixelSender).reportOptOutInvalidEvent(
+                brokerUrl = testBroker.url,
+                brokerVersion = testBroker.version,
+            )
+            verifyNoMoreInteractions(mockPixelSender)
+        }
+
+    @Test
+    fun whenHandleBrokerStepInvalidEventWithEmailConfirmationRunTypeThenReportsOptOutInvalidEvent() =
+        runTest {
+            val state = BrokerStepInvalidEvent(
+                broker = testBroker,
+                runType = RunType.EMAIL_CONFIRMATION,
+            )
+
+            testee.handleState(state)
+
+            verify(mockPixelSender).reportOptOutInvalidEvent(
+                brokerUrl = testBroker.url,
+                brokerVersion = testBroker.version,
+            )
+            verifyNoMoreInteractions(mockPixelSender)
         }
 }

@@ -22,7 +22,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.duckduckgo.anvil.annotations.ContributesViewModel
 import com.duckduckgo.app.browser.newtab.FavoritesQuickAccessAdapter
+import com.duckduckgo.app.browser.omnibar.OmnibarType
 import com.duckduckgo.app.di.AppCoroutineScope
+import com.duckduckgo.app.onboarding.OnboardingPromptsExperimentMetrics
 import com.duckduckgo.app.onboarding.store.AppStage
 import com.duckduckgo.app.onboarding.store.UserStageStore
 import com.duckduckgo.app.onboarding.store.isNewUser
@@ -35,16 +37,17 @@ import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteResult
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteHistoryRelatedSuggestion.AutoCompleteHistorySearchSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteHistoryRelatedSuggestion.AutoCompleteHistorySuggestion
-import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteHistoryRelatedSuggestion.AutoCompleteInAppMessageSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoComplete.AutoCompleteSuggestion.AutoCompleteUrlSuggestion.AutoCompleteSwitchToTabSuggestion
 import com.duckduckgo.browser.api.autocomplete.AutoCompleteFactory
 import com.duckduckgo.browser.api.autocomplete.AutoCompleteSettings
-import com.duckduckgo.browser.ui.omnibar.OmnibarType
+import com.duckduckgo.browser.ui.autocomplete.AutocompleteHistoryDeleteFeature
+import com.duckduckgo.browsermode.api.BrowserMode
 import com.duckduckgo.common.utils.DispatcherProvider
 import com.duckduckgo.common.utils.SingleLiveEvent
 import com.duckduckgo.di.scopes.ActivityScope
 import com.duckduckgo.duckchat.api.DuckAiFeatureState
 import com.duckduckgo.duckchat.api.DuckChat
+import com.duckduckgo.duckchat.api.DuckChatEntryPoint
 import com.duckduckgo.history.api.NavigationHistory
 import com.duckduckgo.savedsites.api.SavedSitesRepository
 import com.duckduckgo.savedsites.api.models.SavedSite
@@ -64,10 +67,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -84,6 +85,7 @@ class SystemSearchViewModel @Inject constructor(
     private val duckChat: DuckChat,
     private var userStageStore: UserStageStore,
     autoCompleteFactory: AutoCompleteFactory,
+    private val browserMode: BrowserMode,
     private val pixel: Pixel,
     private val savedSitesRepository: SavedSitesRepository,
     private val appSettingsPreferencesStore: SettingsDataStore,
@@ -91,6 +93,8 @@ class SystemSearchViewModel @Inject constructor(
     private val history: NavigationHistory,
     private val dispatchers: DispatcherProvider,
     @AppCoroutineScope private val appCoroutineScope: CoroutineScope,
+    private val autocompleteHistoryDeleteFeature: AutocompleteHistoryDeleteFeature,
+    private val onboardingPromptsExperimentMetrics: OnboardingPromptsExperimentMetrics,
 ) : ViewModel(),
     EditSavedSiteDialogFragment.EditSavedSiteListener {
 
@@ -169,9 +173,12 @@ class SystemSearchViewModel @Inject constructor(
         data object AutocompleteItemRemoved : Command()
 
         data object ExitSearch : Command()
+
+        data object LaunchDuckAiVoiceChat : Command()
     }
 
     private val isSearchOnly = MutableStateFlow(false)
+    private var launchedFromWidget = false
 
     val onboardingViewState: MutableLiveData<OnboardingViewState> = MutableLiveData()
     val command: SingleLiveEvent<Command> = SingleLiveEvent()
@@ -181,8 +188,6 @@ class SystemSearchViewModel @Inject constructor(
     private val refreshTrigger = MutableSharedFlow<Unit>(replay = 1)
     private val voiceSearchState = MutableSharedFlow<Unit>(replay = 1)
     private val hiddenIds = MutableStateFlow(HiddenBookmarksIds())
-
-    private var hasUserSeenHistory = false
     private var omnibarType: OmnibarType = appSettingsPreferencesStore.omnibarType
 
     val isOmnibarAtTop: Boolean
@@ -190,6 +195,7 @@ class SystemSearchViewModel @Inject constructor(
 
     private val autoComplete: AutoComplete = autoCompleteFactory.create(
         AutoComplete.Config(showInstalledApps = true),
+        browserMode,
     )
 
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
@@ -201,11 +207,6 @@ class SystemSearchViewModel @Inject constructor(
                 autoComplete.autoComplete(query)
             }.flowOn(dispatchers.io())
             .catch { t: Throwable? -> logcat(WARN) { "Failed to get search results: ${t?.asLog()}" } }
-            .onEach { results ->
-                if (results.suggestions.contains(AutoCompleteInAppMessageSuggestion)) {
-                    hasUserSeenHistory = true
-                }
-            }
             .map {
                 val result = it.copy(
                     suggestions = if (isSearchOnly.value) {
@@ -252,6 +253,15 @@ class SystemSearchViewModel @Inject constructor(
 
     fun setLaunchedFromSearchOnlyWidget(launchedFromSearchOnlyWidget: Boolean) {
         isSearchOnly.value = launchedFromSearchOnlyWidget
+    }
+
+    fun setLaunchedFromWidget(launchedFromWidget: Boolean) {
+        this.launchedFromWidget = launchedFromWidget
+    }
+    private fun fireWidgetSearchMetricIfLaunchedFromWidget(query: String) {
+        if (launchedFromWidget && query.isNotBlank()) {
+            appCoroutineScope.launch { onboardingPromptsExperimentMetrics.fireWidgetSearchMetric() }
+        }
     }
 
     private fun currentOnboardingState(): OnboardingViewState = onboardingViewState.value!!
@@ -306,6 +316,7 @@ class SystemSearchViewModel @Inject constructor(
     }
 
     fun onVoiceSearchResult(capturedText: String) {
+        fireWidgetSearchMetricIfLaunchedFromWidget(capturedText)
         command.value = Command.LaunchBrowser(query = capturedText)
     }
 
@@ -313,9 +324,18 @@ class SystemSearchViewModel @Inject constructor(
         voiceSearchState.tryEmit(Unit)
     }
 
-    fun onDuckAiRequested(query: String) {
-        duckChat.openDuckChatWithAutoPrompt(query)
+    fun onDuckAiRequested(query: String, entryPoint: DuckChatEntryPoint) {
+        duckChat.openDuckChatWithAutoPrompt(query, entryPoint)
         command.value = Command.ExitSearch
+    }
+
+    fun onDigitalAssistOpened() {
+        viewModelScope.launch {
+            if (duckAiFeatureState.allowDuckAiAsDigitalAssistant.value && duckChat.isEnabled()) {
+                pixel.fire(AICHAT_VOICE_SESSION_DIGITAL_ASSISTANT_STARTED)
+                command.value = Command.LaunchDuckAiVoiceChat
+            }
+        }
     }
 
     fun userUpdatedQuery(query: String) {
@@ -346,6 +366,7 @@ class SystemSearchViewModel @Inject constructor(
             return
         }
 
+        fireWidgetSearchMetricIfLaunchedFromWidget(query)
         viewModelScope.launch {
             userStageStore.stageCompleted(AppStage.NEW)
             command.value = Command.LaunchBrowser(query.trim())
@@ -356,26 +377,48 @@ class SystemSearchViewModel @Inject constructor(
     fun userSubmittedAutocompleteResult(suggestion: AutoCompleteSuggestion) {
         when (suggestion) {
             is AutoCompleteSwitchToTabSuggestion -> {
+                fireWidgetSearchMetricIfLaunchedFromWidget(suggestion.phrase)
                 command.value = Command.LaunchBrowserAndSwitchToTab(suggestion.phrase, suggestion.tabId)
                 pixel.fire(INTERSTITIAL_LAUNCH_BROWSER_QUERY)
             }
+
             is AutoCompleteSuggestion.AutoCompleteDuckAIPrompt -> {
-                onDuckAiRequested(suggestion.phrase)
+                onDuckAiRequested(suggestion.phrase, DuckChatEntryPoint.SUGGESTION_ASK_AI)
             }
+
             is AutoCompleteSuggestion.AutoCompleteDeviceAppSuggestion -> {
                 command.value = Command.LaunchDeviceApplication(deviceAppSuggestion = suggestion)
                 pixel.fire(INTERSTITIAL_LAUNCH_DEVICE_APP)
             }
+
             else -> {
+                fireWidgetSearchMetricIfLaunchedFromWidget(suggestion.phrase)
                 command.value = Command.LaunchBrowser(suggestion.phrase)
                 pixel.fire(INTERSTITIAL_LAUNCH_BROWSER_QUERY)
             }
         }
     }
 
-    fun userLongPressedAutocomplete(suggestion: AutoCompleteSuggestion) {
+    suspend fun isAutocompleteHistoryDeleteButtonEnabled(): Boolean =
+        withContext(dispatchers.io()) { autocompleteHistoryDeleteFeature.self().isEnabled() }
+
+    fun onUserRequestedToDeleteAutocompleteItem(suggestion: AutoCompleteSuggestion) {
         when (suggestion) {
-            is AutoCompleteHistorySuggestion, is AutoCompleteHistorySearchSuggestion -> showRemoveSearchSuggestionDialog(suggestion)
+            is AutoCompleteHistorySuggestion, is AutoCompleteHistorySearchSuggestion -> {
+                appCoroutineScope.launch(dispatchers.io()) {
+                    if (autocompleteHistoryDeleteFeature.self().isEnabled()) {
+                        // Explicit delete button: remove immediately, no confirmation dialog.
+                        pixel.fire(AUTOCOMPLETE_RESULT_DELETE_BUTTON_CLICKED)
+                        pixel.fire(AUTOCOMPLETE_RESULT_DELETE_BUTTON_CLICKED_DAILY, type = Daily())
+                        withContext(dispatchers.main()) {
+                            onRemoveSearchSuggestionConfirmed(suggestion, queryFlow.value)
+                        }
+                    } else {
+                        // Legacy hidden long-press: confirm before removing.
+                        showRemoveSearchSuggestionDialog(suggestion)
+                    }
+                }
+            }
             else -> return
         }
     }
@@ -398,9 +441,11 @@ class SystemSearchViewModel @Inject constructor(
                 is AutoCompleteHistorySuggestion -> {
                     history.removeHistoryEntryByUrl(suggestion.url)
                 }
+
                 is AutoCompleteHistorySearchSuggestion -> {
                     history.removeHistoryEntryByQuery(suggestion.phrase)
                 }
+
                 else -> {}
             }
             withContext(dispatchers.main()) {
@@ -500,21 +545,6 @@ class SystemSearchViewModel @Inject constructor(
                     favorites = hiddenIds.value.favorites - savedSite.id,
                 ),
             )
-        }
-    }
-
-    fun onUserDismissedAutoCompleteInAppMessage() {
-        viewModelScope.launch(dispatchers.io()) {
-            autoComplete.userDismissedHistoryInAutoCompleteIAM()
-        }
-    }
-
-    fun autoCompleteSuggestionsGone() {
-        viewModelScope.launch(dispatchers.io()) {
-            if (hasUserSeenHistory) {
-                autoComplete.submitUserSeenHistoryIAM()
-            }
-            hasUserSeenHistory = false
         }
     }
 }

@@ -21,6 +21,7 @@ import android.os.Bundle
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
+import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -28,6 +29,9 @@ import com.duckduckgo.anvil.annotations.ContributeToActivityStarter
 import com.duckduckgo.anvil.annotations.InjectWith
 import com.duckduckgo.common.ui.DuckDuckGoActivity
 import com.duckduckgo.common.ui.viewbinding.viewBinding
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeBucket
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeHandler
+import com.duckduckgo.common.utils.edgetoedge.EdgeToEdgeProvider
 import com.duckduckgo.di.scopes.ActivityScope
 import com.duckduckgo.js.messaging.api.JsCallbackData
 import com.duckduckgo.js.messaging.api.JsMessageCallback
@@ -61,23 +65,45 @@ class PirDashboardWebViewActivity : DuckDuckGoActivity() {
     @Inject
     lateinit var pirNotificationManager: PirNotificationManager
 
+    @Inject
+    lateinit var pirDashboardUrlProvider: PirDashboardUrlProvider
+
+    @Inject
+    lateinit var edgeToEdgeProvider: EdgeToEdgeProvider
+
+    @Inject
+    lateinit var edgeToEdgeHandler: EdgeToEdgeHandler
+
     private val viewModel: PirDashboardWebViewViewModel by bindViewModel()
 
     private val binding: ActivityPirDashboardWebviewBinding by viewBinding()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val edgeToEdgeEnabled = edgeToEdgeProvider.isEnabled(EdgeToEdgeBucket.WEBVIEW)
+        if (edgeToEdgeEnabled) {
+            enableTransparentEdgeToEdge()
+        }
         setContentView(binding.root)
+        if (edgeToEdgeEnabled) {
+            configureEdgeToEdgeInsets()
+        }
 
         setupWebView()
         observeCommands()
 
         pirNotificationManager.createNotificationChannel()
+        lifecycle.addObserver(viewModel)
     }
 
     override fun onDestroy() {
         cleanupWebView()
         super.onDestroy()
+    }
+
+    private fun configureEdgeToEdgeInsets() {
+        edgeToEdgeHandler.applyStatusBarAndHorizontalInsets(binding.root)
+        edgeToEdgeHandler.applyNavigationBarInsets(binding.webViewContainer, drawBehindGestureNav = true)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -131,13 +157,13 @@ class PirDashboardWebViewActivity : DuckDuckGoActivity() {
             setSupportZoom(true)
         }
 
-        binding.pirWebView.loadUrl(PirDashboardWebConstants.WEB_UI_URL)
+        binding.pirWebView.loadUrl(pirDashboardUrlProvider.getUrl())
     }
 
     private fun cleanupWebView() {
         binding.pirWebView.stopLoading()
         binding.pirWebView.removeJavascriptInterface(pirWebJsMessaging.context)
-        binding.root.removeView(binding.pirWebView)
+        binding.webViewContainer.removeView(binding.pirWebView)
         binding.pirWebView.destroy()
     }
 
@@ -152,6 +178,9 @@ class PirDashboardWebViewActivity : DuckDuckGoActivity() {
         when (command) {
             is SendJsEvent -> sendJsEvent(command.event)
             is SendResponseToJs -> sendResponseToJs(command.data)
+            is Command.ShowManualConfigWarning -> {
+                binding.manualConfigWarning.isVisible = command.show
+            }
         }
     }
 

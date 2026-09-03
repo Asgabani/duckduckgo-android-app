@@ -17,32 +17,51 @@
 package com.duckduckgo.common.ui
 
 import android.annotation.SuppressLint
-import android.app.UiModeManager
 import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.graphics.Color
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.widget.Toolbar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.duckduckgo.common.ui.DuckDuckGoTheme.DARK
+import com.duckduckgo.common.ui.store.AppBrandDesignUpdateToggles
 import com.duckduckgo.common.ui.store.ThemingDataStore
 import com.duckduckgo.common.ui.view.isFullScreen
 import com.duckduckgo.mobile.android.R
 import dagger.android.AndroidInjection
 import dagger.android.DaggerActivity
+import dev.zacsweers.metro.HasMemberInjections
 import javax.inject.Inject
 
+@HasMemberInjections
 abstract class DuckDuckGoActivity : DaggerActivity() {
 
     @Inject lateinit var viewModelFactory: ViewModelProvider.NewInstanceFactory
 
     @Inject lateinit var themingDataStore: ThemingDataStore
 
+    @Inject lateinit var appBrandDesignUpdateToggles: AppBrandDesignUpdateToggles
+
+    /**
+     * Override in subclasses whose look should follow the fire-mode theme.
+     * Default `false` keeps activities mode-agnostic on the regular accent regardless
+     * of the user's browser mode.
+     *
+     * Overriding activities must inject [BrowserMode] and return the appropriate Boolean value.
+     */
+    protected open val applyFireTheme: Boolean = false
+
     private var themeChangeReceiver: BroadcastReceiver? = null
+
+    private var displayCutoutModeManaged = false
 
     @SuppressLint("MissingSuperCall")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,7 +78,11 @@ abstract class DuckDuckGoActivity : DaggerActivity() {
         daggerInject: Boolean = true,
     ) {
         if (daggerInject) daggerInject()
-        themeChangeReceiver = applyTheme(themingDataStore.theme)
+        themeChangeReceiver = applyTheme(
+            themingDataStore.theme,
+            applyFireTheme,
+            appBrandDesignUpdateToggles.theme().isEnabled(),
+        )
         super.onCreate(savedInstanceState)
     }
 
@@ -92,15 +115,53 @@ abstract class DuckDuckGoActivity : DaggerActivity() {
 
     fun isDarkThemeEnabled(): Boolean {
         return when (themingDataStore.theme) {
-            DuckDuckGoTheme.SYSTEM_DEFAULT -> {
-                val uiManager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
-                when (uiManager.nightMode) {
-                    UiModeManager.MODE_NIGHT_YES -> true
-                    else -> false
-                }
-            }
+            DuckDuckGoTheme.SYSTEM_DEFAULT -> isInNightMode()
             DARK -> true
             else -> false
+        }
+    }
+
+    /**
+     * Enables edge-to-edge with fully transparent system bars. Call from [onCreate] when
+     * edge-to-edge is enabled for the screen.
+     */
+    protected fun enableTransparentEdgeToEdge() {
+        val barStyle = if (isDarkThemeEnabled()) {
+            SystemBarStyle.dark(Color.TRANSPARENT)
+        } else {
+            SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        }
+        enableEdgeToEdge(statusBarStyle = barStyle, navigationBarStyle = barStyle)
+        applyDisplayCutoutMode(resources.configuration.orientation)
+    }
+
+    /**
+     * Sets the window's display-cutout mode from [orientation]: in landscape the window avoids the
+     * cutout (the notch/camera area is reserved as a black letterbox), in portrait it keeps the
+     * default behaviour and draws normally around the (typically top-centre) cutout.
+     *
+     * Calling this marks the cutout mode as managed, so it is re-applied on rotation via
+     * [onConfigurationChanged] for activities that declare `android:configChanges` and are not
+     * recreated. Non-edge-to-edge screens never call this, so their cutout stays at the platform default.
+     */
+    protected fun applyDisplayCutoutMode(orientation: Int) {
+        displayCutoutModeManaged = true
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
+            } else {
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+            }
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Activities declaring android:configChanges (e.g. orientation) are not recreated on rotation,
+        // so re-apply the cutout mode here. Only screens that applied it once (edge-to-edge) are managed;
+        // others keep the platform default. Subclasses overriding this must call super.
+        if (displayCutoutModeManaged) {
+            applyDisplayCutoutMode(newConfig.orientation)
         }
     }
 

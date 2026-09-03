@@ -165,7 +165,7 @@ class AutofillSettingsActivityScreenViewModelTest {
 
         runTest {
             whenever(mockStore.getAllCredentials()).thenReturn(emptyFlow())
-            whenever(mockStore.getCredentialCount()).thenReturn(flowOf(0))
+            whenever(mockStore.getCredentialCount()).thenReturn(flowOf(Result.success(0)))
             whenever(neverSavedSiteRepository.neverSaveListCount()).thenReturn(emptyFlow())
             whenever(deviceAuthenticator.isAuthenticationRequiredForAutofill()).thenReturn(true)
             whenever(importGooglePasswordsCapabilityChecker.webViewCapableOfImporting()).thenReturn(true)
@@ -753,70 +753,88 @@ class AutofillSettingsActivityScreenViewModelTest {
     }
 
     @Test
-    fun whenScreenLaunchedFromSnackbarThenCorrectLaunchPixelSent() {
+    fun whenScreenLaunchedFromSnackbarThenCorrectLaunchPixelsSent() {
         testee.sendLaunchPixel(BrowserSnackbar)
         val expectedParams = mapOf("source" to "browser_snackbar", "has_credentials_saved" to "0")
         verify(pixel).fire(eq(AUTOFILL_MANAGEMENT_SCREEN_OPENED), eq(expectedParams), any(), eq(Count))
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
     }
 
     @Test
-    fun whenScreenLaunchedFromBrowserThenCorrectLaunchPixelSent() {
+    fun whenScreenLaunchedFromBrowserThenCorrectLaunchPixelsSent() {
         testee.sendLaunchPixel(BrowserOverflow)
         val expectedParams = mapOf("source" to "overflow_menu", "has_credentials_saved" to "0")
         verify(pixel).fire(eq(AUTOFILL_MANAGEMENT_SCREEN_OPENED), eq(expectedParams), any(), eq(Count))
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
     }
 
     @Test
-    fun whenScreenLaunchedFromSyncThenCorrectLaunchPixelSent() {
+    fun whenScreenLaunchedFromSyncThenCorrectLaunchPixelsSent() {
         testee.sendLaunchPixel(Sync)
         val expectedParams = mapOf("source" to "sync", "has_credentials_saved" to "0")
         verify(pixel).fire(eq(AUTOFILL_MANAGEMENT_SCREEN_OPENED), eq(expectedParams), any(), eq(Count))
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
     }
 
     @Test
-    fun whenScreenLaunchedFromDisablePromptThenCorrectLaunchPixelSent() {
+    fun whenScreenLaunchedFromDisablePromptThenCorrectLaunchPixelsSent() {
         testee.sendLaunchPixel(DisableInSettingsPrompt)
         val expectedParams = mapOf("source" to "save_login_disable_prompt", "has_credentials_saved" to "0")
         verify(pixel).fire(eq(AUTOFILL_MANAGEMENT_SCREEN_OPENED), eq(expectedParams), any(), eq(Count))
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
     }
 
     @Test
-    fun whenScreenLaunchedFromNewTabShortcutThenCorrectLaunchPixelSent() {
+    fun whenScreenLaunchedFromNewTabShortcutThenCorrectLaunchPixelsSent() {
         testee.sendLaunchPixel(NewTabShortcut)
         val expectedParams = mapOf("source" to "new_tab_page_shortcut", "has_credentials_saved" to "0")
         verify(pixel).fire(eq(AUTOFILL_MANAGEMENT_SCREEN_OPENED), eq(expectedParams), any(), eq(Count))
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
     }
 
     @Test
-    fun whenScreenLaunchedFromSettingsActivityThenCorrectLaunchPixelSent() {
+    fun whenScreenLaunchedFromSettingsActivityThenCorrectLaunchPixelsSent() {
         testee.sendLaunchPixel(SettingsActivity)
         val expectedParams = mapOf("source" to "settings", "has_credentials_saved" to "0")
         verify(pixel).fire(eq(AUTOFILL_MANAGEMENT_SCREEN_OPENED), eq(expectedParams), any(), eq(Count))
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
     }
 
     @Test
-    fun whenScreenLaunchedFromInternalDevSettingsActivityThenCorrectLaunchPixelSent() {
+    fun whenScreenLaunchedFromInternalDevSettingsActivityThenCorrectLaunchPixelsSent() {
         testee.sendLaunchPixel(InternalDevSettings)
         val expectedParams = mapOf("source" to "internal_dev_settings", "has_credentials_saved" to "0")
         verify(pixel).fire(eq(AUTOFILL_MANAGEMENT_SCREEN_OPENED), eq(expectedParams), any(), eq(Count))
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
     }
 
     @Test
-    fun `when screen launched from settings activity and one credential saved then correct launch pixel sent`() = runTest {
-        whenever(mockStore.getCredentialCount()).thenReturn(flowOf(1))
+    fun `when screen launched from settings activity and one credential saved then correct launch pixels sent`() = runTest {
+        whenever(mockStore.getCredentialCount()).thenReturn(flowOf(Result.success(1)))
 
         testee.sendLaunchPixel(SettingsActivity)
         val expectedParams = mapOf("source" to "settings", "has_credentials_saved" to "1")
         verify(pixel).fire(eq(AUTOFILL_MANAGEMENT_SCREEN_OPENED), eq(expectedParams), any(), eq(Count))
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
     }
 
     @Test
-    fun `when screen launched from browser menu and multiple credentials saved then correct launch pixel sent`() = runTest {
-        whenever(mockStore.getCredentialCount()).thenReturn(flowOf(7))
+    fun `when screen launched from browser menu and multiple credentials saved then correct launch pixels sent`() = runTest {
+        whenever(mockStore.getCredentialCount()).thenReturn(flowOf(Result.success(7)))
 
         testee.sendLaunchPixel(BrowserOverflow)
         val expectedParams = mapOf("source" to "overflow_menu", "has_credentials_saved" to "1")
         verify(pixel).fire(eq(AUTOFILL_MANAGEMENT_SCREEN_OPENED), eq(expectedParams), any(), eq(Count))
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED)
+        verify(pixel).fire(AutofillPixelNames.PRODUCT_TELEMETRY_SURFACE_PASSWORDS_OPENED_DAILY, type = Pixel.PixelType.Daily())
     }
 
     @Test
@@ -1098,7 +1116,7 @@ class AutofillSettingsActivityScreenViewModelTest {
     }
 
     private suspend fun configureStoreToHaveThisManyCredentialsStored(value: Int) {
-        whenever(mockStore.getCredentialCount()).thenReturn(flowOf(value))
+        whenever(mockStore.getCredentialCount()).thenReturn(flowOf(Result.success(value)))
 
         val credentialList = mutableListOf<LoginCredentials>()
         repeat(value) { credentialList.add(someCredentials()) }

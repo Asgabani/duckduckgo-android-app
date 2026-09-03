@@ -103,6 +103,7 @@ class PirWebMaintenanceScanStatusMessageHandler @Inject constructor(
     private suspend fun getCompletedOptOuts(): List<PirWebMessageResponse.ScanResult> {
         return statusProvider.getRemovedOptOuts().map {
             PirWebMessageResponse.ScanResult(
+                id = it.result.extractedProfile.dbId,
                 dataBroker = DataBroker(
                     name = it.result.broker.name,
                     url = it.result.broker.url,
@@ -120,6 +121,7 @@ class PirWebMaintenanceScanStatusMessageHandler @Inject constructor(
                 relatives = it.result.extractedProfile.relatives,
                 foundDate = it.result.extractedProfile.dateAddedInMillis.convertToSeconds(),
                 optOutSubmittedDate = it.result.optOutSubmittedDateInMillis?.convertToSeconds(),
+                optOutFormSubmittedDate = it.result.optOutFormSubmittedDateInMillis?.convertToSeconds(),
                 estimatedRemovalDate = it.result.estimatedRemovalDateInMillis?.convertToSeconds(),
                 removedDate = it.result.optOutRemovedDateInMillis?.convertToSeconds(),
                 hasMatchingRecordOnParentBroker = it.result.hasMatchingRecordOnParentBroker,
@@ -131,6 +133,7 @@ class PirWebMaintenanceScanStatusMessageHandler @Inject constructor(
     private suspend fun getInProgressOptOuts(): List<PirWebMessageResponse.ScanResult> {
         return statusProvider.getInProgressOptOuts().map {
             PirWebMessageResponse.ScanResult(
+                id = it.extractedProfile.dbId,
                 dataBroker = DataBroker(
                     name = it.broker.name,
                     url = it.broker.url,
@@ -148,6 +151,7 @@ class PirWebMaintenanceScanStatusMessageHandler @Inject constructor(
                 relatives = it.extractedProfile.relatives,
                 foundDate = it.extractedProfile.dateAddedInMillis.convertToSeconds(),
                 optOutSubmittedDate = it.optOutSubmittedDateInMillis?.convertToSeconds(),
+                optOutFormSubmittedDate = it.optOutFormSubmittedDateInMillis?.convertToSeconds(),
                 estimatedRemovalDate = it.estimatedRemovalDateInMillis?.convertToSeconds(),
                 removedDate = it.optOutRemovedDateInMillis?.convertToSeconds(),
                 hasMatchingRecordOnParentBroker = it.hasMatchingRecordOnParentBroker,

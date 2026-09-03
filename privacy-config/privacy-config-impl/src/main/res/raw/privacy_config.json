@@ -2,24 +2,6 @@
     "readme": "https://github.com/duckduckgo/privacy-configuration",
     "version": 1652275711516,
     "features": {
-        "notificationPromptExperiment": {
-            "state": "enabled",
-            "features": {
-                "notificationPromptExperimentOct25": {
-                    "state": "enabled",
-                    "cohorts": [
-                        {
-                            "name": "control",
-                            "weight": 1
-                        },
-                        {
-                            "name": "experimentalNoNotificationPrompt",
-                            "weight": 1
-                        }
-                    ]
-                }
-            }
-        },
         "ampLinks": {
             "exceptions": [
                 {
@@ -965,6 +947,32 @@
                     "reason": "Site breakage"
                 }
             ]
+        },
+        "onboardingPrompts": {
+            "state": "enabled",
+            "features": {
+                "addToDockAndWidgetExperimentJul25": {
+                    "state": "enabled",
+                    "cohorts": [
+                        {
+                            "name": "control",
+                            "weight": 1
+                        },
+                        {
+                            "name": "treatmentDockOnly",
+                            "weight": 0
+                        },
+                        {
+                            "name": "treatmentWidgetOnly",
+                            "weight": 1
+                        },
+                        {
+                            "name": "treatmentDockAndWidget",
+                            "weight": 1
+                        }
+                    ]
+                }
+            }
         }
     },
     "unprotectedTemporary": []
